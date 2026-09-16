@@ -1,0 +1,84 @@
+[project]
+name = "mirror"
+version = "0.0.1"
+description = "Webcam hand-pose teleoperation for the SO-101: your hand moves, the arm mirrors it."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# Perception. Separate because every pure-math module and its tests run without it.
+perception = ["mediapipe==1.0.1", "opencv-contrib-python>=4.10"]
+# Simulation sink, and the Phase 5 validation harness.
+sim = ["mujoco>=3.12"]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "pre-commit>=3.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mirror"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# The two vendored kinematics modules are phi's code, formatted to phi's taste.
+# Linting them here would mean editing them, which defeats the vendoring.
+# `._*` are macOS AppleDouble files. The exFAT drive regenerates them constantly
+# (see the note in .gitignore); they are not source and they are not valid UTF-8.
+extend-exclude = [
+    "._*",
+    "**/._*",
+    "src/mirror/kinematics/forward.py",
+    "src/mirror/kinematics/inverse.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RET", "ARG"]
+
+[tool.ruff.lint.per-file-ignores]
+# SIM300 ("Yoda condition") misfires on `SOME_CONSTANT == pytest.approx(x)`:
+# ruff reads the uppercase name as a literal. approx-on-the-right is the
+# idiomatic pytest form, and ruff's suggested rewrite is strictly worse.
+"tests/*" = ["SIM300"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+strict = true
+# Same reason as the ruff exclusion above.
+exclude = ['(^|/)\._', 'src/mirror/kinematics/(forward|inverse)\.py']
+
+[[tool.mypy.overrides]]
+module = ["mirror.kinematics.forward", "mirror.kinematics.inverse"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "perception: needs mediapipe installed (not required for the pure-math suite)",
+    "sim: needs mujoco installed",
+    "hardware: touches the physical arm. NEVER runs in CI.",
+    "phi: needs the phi repo reachable on disk to re-derive provenance",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    # The vendored kinematics modules each carry a `__main__` self-test that runs
+    # against MuJoCo. Valuable, but not library code and not part of this gate.
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

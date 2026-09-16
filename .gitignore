@@ -1,0 +1,27 @@
+# macOS on exFAT: these regenerate forever. Never commit them.
+._*
+.DS_Store
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Fetched at setup time, not committed (16 MB of meshes).
+model/
+
+# Recorded video is fetched or regenerated; only landmark .npz goldens are committed.
+fixtures/clips/
+outputs/
+
+# coverage artifacts
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

@@ -1,0 +1,24 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=256]
+      # exFAT + macOS: block the AppleDouble turds at the gate.
+      - id: check-illegal-windows-names
+  - repo: local
+    hooks:
+      - id: no-appledouble
+        name: block ._* and .DS_Store (macOS on exFAT)
+        entry: bash -c 'f=$(git diff --cached --name-only | grep -E "(^|/)(\._|\.DS_Store)" || true); [ -z "$f" ] || { echo "refusing: $f"; exit 1; }'
+        language: system
+        pass_filenames: false
