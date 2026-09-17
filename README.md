@@ -8,8 +8,8 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 1 complete.** Perception is in, offline and deterministic.
-> `make check` = 79 tests, no camera required. See [Phases](#phases).
+> **Status: Phase 2 complete.** Hand frame and clutch are in.
+> `make check` = **120 tests, no camera required**. See [Phases](#phases).
 
 ---
 
@@ -63,14 +63,45 @@ runs in CI with no camera and no arm.
          its OUTPUT is the fixture               lives HERE       (highest-ROI test)
 ```
 
-## Quick start
+## Try it
 
 ```bash
-make setup     # uv venv + all extras
-make check     # THE GATE: lint + strict types + the pure-math suite
+make setup     # uv venv (off exFAT) + all extras
+make doctor    # deps, model, camera permission, pipeline -- one line each
+make view      # live hand tracking from the built-in camera
 ```
 
-`make check` needs no camera, no robot, and no MuJoCo.
+**Pinch thumb to index to engage.** Move your hand, the tool target follows.
+Release to freeze. `SPACE` records a clip, `R` resets the clutch, `Q` quits.
+
+| on screen | what it is |
+|---|---|
+| green skeleton | the 21 landmarks |
+| red / green / blue arrows | palm frame: x, y (fingers), z (out of palm) |
+| PINCH bar | thumb-index over palm span; white ticks are the two thresholds |
+| CLUTCH | grey when open, green when engaged |
+| TOOL cm | where the arm would be commanded |
+
+**Camera permission is per-application.** macOS grants it to whichever app
+launched the process, so run `make view` from the terminal you normally use and
+click Allow. If no prompt appears: *System Settings → Privacy & Security →
+Camera*.
+
+```bash
+make record NAME=wave           # SPACE to start/stop; saves .mp4 + landmark .npz
+make replay CLIP=fixtures/clips/wave-<stamp>.mp4    # same pipeline, no camera
+```
+
+`make replay` re-runs a recorded clip through the identical code path, so a
+result you saw live is reproducible without you in front of the lens.
+
+## Verify
+
+```bash
+make check     # lint + strict mypy + 120 tests. No camera, no robot, no MuJoCo.
+make test-all  # adds the 13 perception tests (needs mediapipe + make assets)
+make cov       # coverage
+```
 
 ## Phases
 
@@ -79,8 +110,8 @@ Each one exits on a **committed number**, not on "it works."
 | # | phase | exit gate |
 |---|---|---|
 | **0** ✅ | scaffold, kinematics, limits | `make check` green, real tests, ADR-001/002 written |
-| **1** ✅ | perception, offline | bit-identical landmarks, PNG-pinned; p90 **11.76 ms** (85 FPS); fixtures frozen. [measurements](docs/measurements/phase-1-perception.md) |
-| 2 | hand frame + retarget | orthonormality under fuzz; clutch state machine table-covered |
+| **1** ✅ | perception, offline | bit-identical landmarks, PNG-pinned; p90 **11.76 ms** (85 FPS). [measurements](docs/measurements/phase-1-perception.md) |
+| **2** ✅ | hand frame + retarget | orthonormal to **1e-16**; mirror test exact; all 10 clutch transitions. [measurements](docs/measurements/phase-2-handframe.md) |
 | 3 | the 5-DOF projection | residual proven to be a pure yaw rotation, 10k poses |
 | 4 | safety layer | 10k fuzz cases, zero escapes |
 | 5 | sim in the loop | tracking-error table + a side-by-side clip |

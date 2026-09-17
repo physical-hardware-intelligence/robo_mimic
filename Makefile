@@ -1,5 +1,5 @@
 # mirror -- one command per thing. `make help` lists them.
-.PHONY: help setup check lint types test test-all cov assets fixtures model clean
+.PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n",$$1,$$2}'
@@ -43,6 +43,19 @@ assets:  ## Fetch the hand-landmarker model + reference image (not committed)
 
 fixtures: assets  ## Regenerate the committed landmark goldens from the reference image
 	$(PY) scripts/make_fixtures.py
+
+doctor:  ## Check deps, model, camera permission, and the pipeline end to end
+	@-$(PY) scripts/doctor.py
+
+view: assets  ## Live hand tracking from the built-in camera (no recording)
+	$(PY) scripts/record.py
+
+record: assets  ## Same, but SPACE starts/stops capturing a clip to fixtures/clips/
+	$(PY) scripts/record.py --name $(or $(NAME),clip)
+
+replay: assets  ## Re-run a recorded clip through the identical pipeline: make replay CLIP=path.mp4
+	@test -n "$(CLIP)" || { echo "usage: make replay CLIP=fixtures/clips/xxx.mp4"; exit 1; }
+	$(PY) scripts/record.py --video $(CLIP)
 
 model:  ## Fetch the SO-101 MuJoCo model from upstream (not vendored -- 16 MB of meshes)
 	@echo "TODO(phase-5): curl the SO101 dir from TheRobotStudio/SO-ARM100 into model/"
