@@ -12,7 +12,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev]"
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests scripts
       - name: Types (strict)
         run: mypy src
       - name: Pure-math suite
@@ -25,5 +25,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[perception,dev]"
-      - name: Perception suite (tolerance-based -- mediapipe is not bit-reproducible)
-        run: pytest -m perception
+      - name: Fetch model + reference image (not committed)
+        run: make assets
+      - name: Rebuild the reference PNG and landmark fixture for THIS platform
+        run: make fixtures
+      # `golden` is excluded: it asserts bit-identity against a fixture generated
+      # on macOS arm64. That has not been verified across OS/arch, so asserting it
+      # on a Linux runner would be an untested claim. See the test's docstring.
+      - name: Perception suite
+        run: pytest -m "perception and not golden"

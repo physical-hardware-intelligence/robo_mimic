@@ -12,7 +12,12 @@ dependencies = [
 
 [project.optional-dependencies]
 # Perception. Separate because every pure-math module and its tests run without it.
-perception = ["mediapipe==1.0.1", "opencv-contrib-python>=4.10"]
+# mediapipe is pinned EXACTLY, and the pin is load-bearing. 1.0.1 crashes on
+# macOS arm64 inside its own graph -- TensorsToDetectionsCalculator (the palm
+# detector) initialises DrishtiMetalHelper unconditionally and the Metal service
+# is not registered, so it aborts. `delegate=CPU` does not avoid it. 0.10.35 runs
+# clean and is bit-for-bit deterministic. See src/mirror/landmarks.py.
+perception = ["mediapipe==0.10.35", "opencv-contrib-python>=4.10"]
 # Simulation sink, and the Phase 5 validation harness.
 sim = ["mujoco>=3.12"]
 dev = [
@@ -70,6 +75,7 @@ testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [
     "perception: needs mediapipe installed (not required for the pure-math suite)",
+    "golden: reproduces committed landmarks BIT-for-BIT. Same platform + same mediapipe only. [UNVERIFIED] across OS/arch, so CI does not run it.",
     "sim: needs mujoco installed",
     "hardware: touches the physical arm. NEVER runs in CI.",
     "phi: needs the phi repo reachable on disk to re-derive provenance",

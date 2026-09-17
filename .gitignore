@@ -25,3 +25,7 @@ outputs/
 .coverage.*
 coverage.xml
 htmlcov/
+
+# Model weights and reference images are fetched, not committed (7.8 MB + licence).
+assets/
+fixtures/images/

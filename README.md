@@ -8,7 +8,8 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 0.** Scaffold, kinematics, and the gate. No perception yet. See [Phases](#phases).
+> **Status: Phase 1 complete.** Perception is in, offline and deterministic.
+> `make check` = 79 tests, no camera required. See [Phases](#phases).
 
 ---
 
@@ -78,7 +79,7 @@ Each one exits on a **committed number**, not on "it works."
 | # | phase | exit gate |
 |---|---|---|
 | **0** ✅ | scaffold, kinematics, limits | `make check` green, real tests, ADR-001/002 written |
-| 1 | perception, offline | landmarks from committed clips; per-frame latency table; fixtures frozen |
+| **1** ✅ | perception, offline | bit-identical landmarks, PNG-pinned; p90 **11.76 ms** (85 FPS); fixtures frozen. [measurements](docs/measurements/phase-1-perception.md) |
 | 2 | hand frame + retarget | orthonormality under fuzz; clutch state machine table-covered |
 | 3 | the 5-DOF projection | residual proven to be a pure yaw rotation, 10k poses |
 | 4 | safety layer | 10k fuzz cases, zero escapes |
@@ -96,9 +97,23 @@ Three different things. Conflating them is how a project claims done while broke
 | **Verified** | does what I wrote satisfy the spec? | property + fuzz over invariants | CI, every push |
 | **Validated** | is the spec the right spec? | measured latency, tracking error, a human operator | by hand, in a table |
 
-**MediaPipe is not bit-for-bit reproducible across versions and platforms.** So the fixtures
-store **its output, not its input**: everything downstream is deterministic even though
-MediaPipe is not. MediaPipe itself gets a separate tolerance-based test.
+**Fixtures store MediaPipe's output, not its input**, so every downstream stage is
+deterministic in CI with no camera and no 60 MB native dependency.
+
+Phase 1 sharpened *why*. Within a pinned version on one machine MediaPipe is **bit-identical**
+(0.000e+00 over 30 calls and 5 fresh detectors), so goldens assert exact equality. But:
+
+- **`mediapipe 1.0.1` aborts on macOS arm64** inside `TensorsToDetectionsCalculator`
+  (the palm detector) — `delegate=CPU` does not help. Pinned to **`0.10.35`**.
+- **The JPEG decoder changes the answer.** MediaPipe's loader and OpenCV's differ by ≤3
+  levels on 2.79 % of pixels, and that moves world landmarks by **0.7370 mm**. The image
+  *format* (SRGBA vs SRGB) changes nothing. Fix: transcode once to **PNG**, which is lossless
+  and decoder-independent → **0.000000 mm**.
+- **Noise floor**: σ = 1 level of image noise moves landmarks **2.6 mm**; σ = 4 moves them
+  **11.2 mm**. Jitter of millimetres is intrinsic, which is why filtering is a safety
+  component and why a *differential* position mapping beats an absolute one.
+
+Full numbers: [docs/measurements/phase-1-perception.md](docs/measurements/phase-1-perception.md).
 
 ## Kinematics provenance
 
