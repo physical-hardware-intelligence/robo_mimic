@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from robo_mimic.arm import (  # noqa: E402
+    GRIPPER,
     MAX_TEMP_C,
     MIN_VOLTS,
     check_calibration,
@@ -44,7 +45,7 @@ from robo_mimic.arm import (  # noqa: E402
     report_pose,
     stale_goal_deg,
 )
-from robo_mimic.kinematics.limits import JOINTS  # noqa: E402
+from robo_mimic.kinematics.limits import JOINTS, clamp_deg  # noqa: E402
 
 #: phi's follower. Overridable, never guessed: picking the LEADER by accident
 #: would drive the arm you are supposed to be holding.
@@ -126,8 +127,14 @@ def cmd_check(args: argparse.Namespace) -> int:
         goal_t = bus.sync_read("Goal_Position", normalize=False)
         stale = stale_goal_deg(present_t, goal_t, RESOLUTION)
         line(stale <= args.max_stale, "stale goal", f"{stale:.2f} deg worst joint",
-             f"energising would SNAP up to {stale:.1f} deg. Power-cycle the arm, "
-             "or move it to its last commanded pose by hand first")
+             f"energising would THROW the arm up to {stale:.1f} deg. Fix it with "
+             "`arm.py align`, which writes goal := present with the torque still off")
+        if stale > args.max_stale:
+            for n in bus.motors:
+                gap = (goal_t[n] - present_t[n]) * 360.0 / RESOLUTION
+                if abs(gap) > 1.0:
+                    print(f"       {DIM}{n:<15}{present_t[n]:>6} -> {goal_t[n]:<6} "
+                          f"{gap:+8.2f} deg{OFF}")
 
         volts = bus.sync_read("Present_Voltage", normalize=False)
         temps = bus.sync_read("Present_Temperature", normalize=False)
@@ -229,16 +236,39 @@ class Arm:
             time.sleep(self.dt)
 
     def park(self) -> None:
-        """The only way out. Freeze, walk home, then let go."""
+        """The only way out. Freeze, walk home, let go, then align.
+
+        The align at the end is not cosmetic. Torque off lets the arm sag away
+        from its last goal, and that gap is exactly what makes the NEXT power-up
+        snap. Leaving goal == where the limp arm actually settled means whoever
+        runs this next finds a safe arm rather than a loaded spring.
+        """
         if self.limp_now:
-            print("  already limp, not re-energising to park")
+            align(self.bus)
             return
         try:
             self.freeze()
             self.glide(self.home, "parking")
         finally:
             self.bus.disable_torque()
-            print("  parked at the starting pose, torque off")
+            time.sleep(0.4)  # let gravity finish before recording where it landed
+            align(self.bus)
+            print("  parked, torque off, goal aligned to where it settled")
+
+
+def align(bus) -> float:
+    """Goal_Position := Present_Position. Torque untouched, nothing moves.
+
+    The cure for a stale goal left behind by any other process -- a lerobot
+    rollout, a teleop session, a crash. Writing the goal register while torque
+    is off cannot move the arm; it only disarms the snap that enabling torque
+    would otherwise cause.
+    """
+    present = bus.sync_read("Present_Position", normalize=False)
+    goal = bus.sync_read("Goal_Position", normalize=False)
+    before = stale_goal_deg(present, goal, RESOLUTION)
+    bus.sync_write("Goal_Position", present, normalize=False)
+    return before
 
 
 def _keys():
@@ -310,8 +340,6 @@ def cmd_hold(args: argparse.Namespace) -> int:
 
 def cmd_jog(args: argparse.Namespace) -> int:
     """Move ONE joint by a small amount. Proves sign and scale before teleop."""
-    from robo_mimic.kinematics.limits import clamp_deg
-
     def body(arm: Arm) -> int:
         start = arm.present()[args.joint]
         wanted = start + args.deg
@@ -326,6 +354,89 @@ def cmd_jog(args: argparse.Namespace) -> int:
         return 0
 
     return _energised_session(args, body)
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Own the bus. Take targets over UDP, hold when they stop arriving.
+
+    The fast half of the two-loop split: perception sends absolute targets at
+    whatever rate it manages, this runs at `--rate` and interpolates toward the
+    newest one. Nothing about the arm's motion is paced by the camera.
+    """
+    from robo_mimic.link import STALE_MS, Receiver
+
+    def body(arm: Arm) -> int:
+        receiver = Receiver(port=args.port_udp)
+        print(f"  listening on udp {args.port_udp}, {args.rate:.0f} Hz control loop")
+        print(f"  {DIM}silence for {STALE_MS:.0f} ms freezes the arm. ctrl-c parks it.{OFF}\n")
+        dt = 1.0 / args.rate
+        step_ceiling = args.speed * dt  # degrees per tick, the hard rate limit
+        last_seen = time.monotonic()
+        holding = True
+        ticks = frozen = 0
+        try:
+            while True:
+                tick = time.monotonic()
+                target = receiver.drain()
+                if target is not None and target.sequence != getattr(body, "_seen", None):
+                    body._seen = target.sequence  # type: ignore[attr-defined]
+                    last_seen = tick
+
+                age_ms = (tick - last_seen) * 1000.0
+                live = target is not None and age_ms <= STALE_MS and target.engaged
+                if not live:
+                    if not holding:
+                        arm.freeze()
+                        holding = True
+                    frozen += 1
+                else:
+                    holding = False
+                    now = arm.present()
+                    goal = {}
+                    for name in JOINTS:
+                        delta = target.joints[name] - now[name]
+                        capped = max(-step_ceiling, min(step_ceiling, delta))
+                        goal[name] = clamp_deg(name, now[name] + capped)
+                    goal[GRIPPER] = min(100.0, max(0.0, target.gripper * 100.0))
+                    arm.bus.sync_write("Goal_Position", goal)
+
+                ticks += 1
+                if ticks % int(args.rate) == 0:
+                    state = "HOLD" if not live else "live"
+                    print(f"\r  {state}  rx {receiver.received:6d}  "
+                          f"stale {age_ms:6.0f} ms  frozen {frozen * dt:5.1f} s ",
+                          end="", flush=True)
+                time.sleep(max(0.0, dt - (time.monotonic() - tick)))
+        except KeyboardInterrupt:
+            print("\n  interrupted")
+            return 0
+        finally:
+            receiver.close()
+
+    return _energised_session(args, body)
+
+
+def cmd_align(args: argparse.Namespace) -> int:
+    """Disarm a stale goal. Torque is never enabled, so nothing can move."""
+    bus, _ = open_bus(args.port, args.calibration)
+    try:
+        torque = bus.sync_read("Torque_Enable", normalize=False)
+        if any(torque.values()):
+            print(f"  {RED}refusing{OFF}: the arm is ENERGISED. Aligning now would "
+                  "command it to where it currently sags, which is a real move.")
+            print(f"  {DIM}park or power down first, then run this{OFF}")
+            return 1
+        before = align(bus)
+        after = stale_goal_deg(
+            bus.sync_read("Present_Position", normalize=False),
+            bus.sync_read("Goal_Position", normalize=False),
+            RESOLUTION,
+        )
+        print(f"  stale goal {before:.2f} -> {after:.2f} deg. Nothing moved; "
+              f"the next power-up is now a no-op.")
+        return 0
+    finally:
+        bus.disconnect(disable_torque=False)
 
 
 def main() -> int:
@@ -352,6 +463,15 @@ def main() -> int:
     jog.add_argument("--deg", type=float, required=True)
     jog.add_argument("--speed", type=float, default=15.0, help="deg/s ceiling")
     jog.set_defaults(func=cmd_jog)
+
+    aln = sub.add_parser("align", help="disarm a stale goal. Never energises.")
+    aln.set_defaults(func=cmd_align)
+
+    srv = sub.add_parser("serve", help="own the bus; take targets from teleop over UDP")
+    srv.add_argument("--rate", type=float, default=50.0, help="control loop Hz")
+    srv.add_argument("--speed", type=float, default=30.0, help="deg/s ceiling per joint")
+    srv.add_argument("--port-udp", type=int, default=47101)
+    srv.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     try:

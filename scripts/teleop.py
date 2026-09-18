@@ -267,6 +267,9 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     parser.add_argument("--bench", action="store_true", help="no window; print the budget")
     parser.add_argument("--frames", type=int, default=0, help="stop after N frames")
     parser.add_argument("--engage", action="store_true", help="start with the clutch ON")
+    parser.add_argument("--arm", action="store_true",
+                        help="ALSO drive the real SO-101, via `arm.py serve`")
+    parser.add_argument("--arm-port", type=int, default=47101)
     parser.add_argument(
         "--render-every", type=int, default=2, metavar="N",
         help="redraw the sim view every Nth frame (physics always runs). Default 2: "
@@ -300,6 +303,13 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     aspect = source.height / source.width
     retargeter = Retargeter(RetargetConfig(aspect=aspect))
     limiter = SafetyLimiter(SafetyConfig())
+    sender = None
+    if args.arm:
+        from robo_mimic.link import Sender
+        sender = Sender(port=args.arm_port)
+        print(f"sending joint targets to udp {args.arm_port}. "
+              f"Start `arm.py serve` in the phi env, or nothing will listen.")
+
     limiter.reset(START)
     arm = SimArm(SCENE, interpolate=True, start=START)
     renderer = arm.renderer()
@@ -349,6 +359,13 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         with budget.measure("sim"):
             arm.set_target(safe.joints, safe.gripper)
             arm.advance(dt)
+
+        if sender is not None:
+            # After safety, never before: the arm must receive exactly what the
+            # sim shows. Fire-and-forget, so a missing server cannot stall the
+            # camera loop. `engaged` rides along because the clutch belongs to
+            # the operator, not to the process that happens to own the bus.
+            sender.send(safe.joints, safe.gripper, engaged=engaged)
 
         with budget.measure("render"):
             if not args.bench:
