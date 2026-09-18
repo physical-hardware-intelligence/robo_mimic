@@ -8,8 +8,8 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 2 complete**, plus the gripper.
-> `make check` = **138 tests, no camera required**. See [Phases](#phases).
+> **Status: Phase 3 complete.** The pipeline now runs end to end to joint angles.
+> `make check` = **162 tests, no camera required**. See [Phases](#phases).
 
 ---
 
@@ -35,6 +35,16 @@ problem instead of pretending to solve it.
 → [ADR-002](docs/adr/002-incremental-position-clutch.md)
 
 ### 2. The arm has five degrees of freedom. A hand pose has six.
+
+The whole constraint is **one scalar equation**, measured over 3000 poses:
+
+```
+â · n̂ = 0     â = the tool's x-axis (the wrist/roll axis),  n̂ = the arm-plane normal
+```
+
+The tool x-axis is unmoved by `wrist_roll` (**7.85e-17**) and never leaves the
+plane (**0.000000000**, min = median = max). The rotation you cannot have is
+about `ĉ = n̂ × â` — **in** the plane, perpendicular to the wrist.
 
 The SO-101 is `pan → planar 3R → roll`. Its tool Jacobian has **rank 5 in 200/200** random
 in-limit poses, so at every configuration there is a 1-D family of tool motions it simply
@@ -117,7 +127,7 @@ result you saw live is reproducible without you in front of the lens.
 ## Verify
 
 ```bash
-make check     # lint + strict mypy + 138 tests. No camera, no robot, no MuJoCo.
+make check     # lint + strict mypy + 162 tests. No camera, no robot, no MuJoCo.
 make test-all  # adds the 13 perception tests (needs mediapipe + make assets)
 make cov       # coverage
 ```

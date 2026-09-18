@@ -157,6 +157,19 @@ def main() -> int:
             )
         else:
             check("gripper follows the pinch", False, "no jaw command while engaged")
+
+        # Phase 3: the Pose -> joints link.
+        from mirror.project import project
+
+        if wide.target is not None:
+            result = project(wide.target)
+            ok = result.reachable and result.position_error_m < 1e-6
+            check(
+                "projection (pose -> joints)",
+                ok,
+                f"{result.status}, {result.position_error_m * 1000:.3f} mm, "
+                f"{result.out_of_plane_deg:.1f} deg out of plane",
+            )
     except Exception as error:  # noqa: BLE001
         check("pipeline (fixture -> command)", False, f"{type(error).__name__}: {error}",
               "make check")

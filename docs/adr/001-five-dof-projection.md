@@ -1,6 +1,6 @@
 # ADR-001: Project 6-DOF hand poses onto 5 DOF by discarding tool yaw, and report it
 
-**Status**: Accepted
+**Status**: Accepted, with a **factual correction** (2026-09-17) — see *Which axis, exactly*
 **Date**: 2026-09-16
 
 ## Context
@@ -69,3 +69,33 @@ projection, this invariant catches it; nothing else would.
 Supporting invariant, already available: `FK(IK(project(T))) == project(T)` to IK precision.
 Measured on the vendored modules: joint-space recovery **3.21e-11 deg**, task-space position
 **5.19e-16 m**.
+
+
+---
+
+## Correction (2026-09-17): which axis, exactly
+
+This ADR said the projection discards *"rotation about the arm-plane normal (tool yaw)"*. **The named axis was wrong.** Rotation about the plane normal **is the pitch**, which is fully achievable.
+
+Measured over 1777 samples (154 IK branch flips rejected), at fixed position:
+
+| | min | median | max |
+|---|---|---|---|
+| \|pitch axis · n̂\| | **1.0000000** | 1.0000000 | 1.0000000 |
+| \|roll axis · n̂\| | **0.0000000** | 0.0000000 | 0.0000000 |
+| \|**missing** · n̂\| | **0.0000000** | 0.0000000 | 0.0000000 |
+| \|**missing** · â\| | **0.0000000** | 0.0000000 | 0.0000000 |
+
+**The discarded axis lies IN the plane, perpendicular to the wrist axis**: `ĉ = n̂ × â`.
+
+The *physical* description in this ADR was right all along — you cannot tilt the gripper out of the arm's plane, and the arm always points outward from its base. Only the algebra naming the axis was wrong.
+
+### The constraint, restated correctly
+
+Measured over 3000 poses: the tool frame's **x-axis is the wrist/roll axis** (unmoved by 37° of `wrist_roll`: `7.85e-17`) and it is **confined to the arm plane** (`0.000000000`, min = median = max). So the whole 5-DOF constraint is one scalar equation:
+
+```
+â · n̂ = 0
+```
+
+Everything in `project.py` follows from that line.
