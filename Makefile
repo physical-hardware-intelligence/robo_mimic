@@ -9,7 +9,11 @@ help:  ## Show this help
 # ("could not find entry for: ruff-x.y.z.data/scripts/._ruff"). Same convention
 # as phi's ~/venvs/so101-sim.
 VENV ?= $(HOME)/venvs/robo_mimic
-PY   := $(VENV)/bin/python
+# Use the venv when it exists, otherwise whatever `python` is on PATH. CI
+# installs into the runner's system Python and has no venv at this path, so a
+# hardcoded $(VENV)/bin/python fails there with "No such file or directory" --
+# which is exactly how the first public CI run broke.
+PY   := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python)
 
 setup:  ## Create the venv (off exFAT) and install everything
 	uv venv --python 3.12 $(VENV)
