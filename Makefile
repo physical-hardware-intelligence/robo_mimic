@@ -1,5 +1,5 @@
 # robo_mimic -- one command per thing. `make help` lists them.
-.PHONY: help setup lock check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean scrub
+.PHONY: help setup lock check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean scrub cameras
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n",$$1,$$2}'
@@ -15,6 +15,12 @@ VENV ?= $(HOME)/venvs/robo_mimic
 # hardcoded $(VENV)/bin/python fails there with "No such file or directory" --
 # which is exactly how the first public CI run broke.
 PY   := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python)
+
+# Which webcam. `?=` means an exported CAMERA in your shell wins, so you can set
+# it once instead of passing it every run. Index order is AVFoundation's, and an
+# external USB camera often enumerates BEFORE the built-in one -- `make cameras`
+# prints the list. Every target that opens a camera honours this, doctor included.
+CAMERA ?= 0
 
 setup:  ## Create the venv (off exFAT) and install the EXACT locked versions
 	UV_PROJECT_ENVIRONMENT=$(VENV) uv sync --locked --all-extras
@@ -55,13 +61,13 @@ fixtures: assets  ## Regenerate the committed landmark goldens from the referenc
 	$(PY) scripts/make_fixtures.py
 
 doctor:  ## Check deps, model, camera permission, and the pipeline end to end
-	@-$(PY) scripts/doctor.py
+	@-$(PY) scripts/doctor.py --camera $(CAMERA)
 
-view: assets  ## Live hand tracking from the built-in camera (no recording)
-	$(PY) scripts/record.py
+view: assets  ## Live hand tracking, landmarks only -- NO simulator (that is `teleop`)
+	$(PY) scripts/record.py --camera $(CAMERA) $(ARGS)
 
 record: assets  ## Same, but SPACE starts/stops capturing a clip to fixtures/clips/
-	$(PY) scripts/record.py --name $(or $(NAME),clip)
+	$(PY) scripts/record.py --camera $(CAMERA) --name $(or $(NAME),clip) $(ARGS)
 
 replay: assets  ## Re-run a recorded clip through the identical pipeline: make replay CLIP=path.mp4
 	@test -n "$(CLIP)" || { echo "usage: make replay CLIP=fixtures/clips/xxx.mp4"; exit 1; }
@@ -74,7 +80,7 @@ sim: model  ## Drive the sim from a synthetic hand trajectory and report trackin
 	$(PY) scripts/run_sim.py $(ARGS)
 
 teleop: assets model  ## LIVE: your hand on the left, the simulated arm on the right
-	$(PY) scripts/teleop.py $(ARGS)
+	$(PY) scripts/teleop.py --camera $(CAMERA) $(ARGS)
 
 bench: model  ## Per-stage latency budget, no camera and no window
 	$(PY) scripts/teleop.py --source synthetic --bench --frames 400 --engage
@@ -91,5 +97,14 @@ clean:
 # Harmless but printed on every later git command. Deleting the sidecar deletes
 # the xattr, which is the whole fix. Nothing prevents it recurring; run this
 # after any operation that writes a pack.
+# ffmpeg's enumeration IS the one OpenCV uses (both go through AVFoundation),
+# which is why this is the authoritative answer and not a guess. Stop at the
+# audio section: those indices are microphones and mean nothing to --camera.
+cameras:  ## List the webcams macOS sees, with the CAMERA= value for each
+	@ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 \
+	  | awk '/video devices/{on=1;next} /audio devices/{on=0} on' \
+	  | sed -n 's/.*\[\([0-9]*\)\] \(.*\)/  CAMERA=\1  \2/p' \
+	  || system_profiler SPCameraDataType
+
 scrub:  ## Delete the ._* AppleDouble files exFAT forces macOS to write
 	find . -name '._*' -delete

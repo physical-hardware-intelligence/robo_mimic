@@ -30,6 +30,14 @@ make model     # fetch the SO-101 model, hash-pinned (16.4 MB of meshes)
 make teleop    # LIVE: your hand on the left, the simulated arm on the right
 ```
 
+**Wrong camera?** An external USB webcam usually enumerates *before* the
+built-in one, so index 0 is often not the one you want.
+
+```bash
+make cameras            # lists them with the CAMERA= value for each
+make teleop CAMERA=1    # or `export CAMERA=1` once, and every target follows
+```
+
 **`SPACE` is the clutch — nothing moves until it is ON.** Then move your hand to
 move the tool, **pinch to close the jaw, spread to open it**. `R` resets, `Q` quits.
 

@@ -7,6 +7,7 @@ failures, so it is usable in a script.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -35,6 +36,14 @@ def check(label: str, ok: bool | None, detail: str = "", fix: str = "") -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--camera", type=int, default=0,
+        help="device index to test. NOT always the built-in: an external USB "
+             "camera often enumerates first. `make cameras` lists them.",
+    )
+    index = parser.parse_args().camera
+
     print("\nmirror doctor\n")
 
     check("python", sys.version_info >= (3, 12), f"{sys.version.split()[0]}", "need 3.12+")
@@ -86,25 +95,26 @@ def main() -> int:
     if cv2 is None:
         check("camera", None, "opencv missing")
     else:
-        camera = cv2.VideoCapture(0)
+        camera = cv2.VideoCapture(index)
         opened = camera.isOpened()
         ok, frame = camera.read() if opened else (False, None)
         camera.release()
         if ok and frame is not None:
             height, width = frame.shape[:2]
-            check("camera 0", True, f"{width}x{height}, aspect {height / width:.3f}")
+            check(f"camera {index}", True, f"{width}x{height}, aspect {height / width:.3f}")
         else:
             check(
-                "camera 0",
+                f"camera {index}",
                 False,
-                "not authorized",
+                "not authorized" if opened else "no such device or not authorized",
                 "macOS asks per-application, and the grant belongs to whichever\n"
                 "app launched this process. Easiest path:\n"
                 "  1. open Terminal.app\n"
                 "  2. cd " + str(ROOT) + "\n"
                 "  3. make view        <- click Allow when macOS asks\n"
                 "If no prompt appears:\n"
-                "  System Settings > Privacy & Security > Camera > enable Terminal",
+                "  System Settings > Privacy & Security > Camera > enable Terminal\n"
+                "Wrong camera? `make cameras` lists them; then CAMERA=<n> make view",
             )
 
     # The whole pipeline, end to end, on the committed fixture. No camera needed.
