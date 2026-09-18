@@ -1,5 +1,5 @@
 # mirror -- one command per thing. `make help` lists them.
-.PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model clean
+.PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model sim clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n",$$1,$$2}'
@@ -57,8 +57,11 @@ replay: assets  ## Re-run a recorded clip through the identical pipeline: make r
 	@test -n "$(CLIP)" || { echo "usage: make replay CLIP=fixtures/clips/xxx.mp4"; exit 1; }
 	$(PY) scripts/record.py --video $(CLIP)
 
-model:  ## Fetch the SO-101 MuJoCo model from upstream (not vendored -- 16 MB of meshes)
-	@echo "TODO(phase-5): curl the SO101 dir from TheRobotStudio/SO-ARM100 into model/"
+model:  ## Fetch the SO-101 MuJoCo model from upstream (16.4 MB of meshes, hash-pinned)
+	$(PY) scripts/fetch_model.py
+
+sim: model  ## Drive the sim from a synthetic hand trajectory and report tracking error
+	$(PY) scripts/run_sim.py $(ARGS)
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache; find . -name __pycache__ -prune -exec rm -rf {} +

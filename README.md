@@ -8,9 +8,9 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 4 (filter half) complete.** Perception → joints → a safety
-> envelope that no input can escape.
-> `make check` = **195 tests, no camera required**. See [Phases](#phases).
+> **Status: Phase 5 complete.** The whole pipeline runs and an arm moves.
+> `make check` = **195 tests, no camera required**; +11 sim tests with `make model`.
+> See [Phases](#phases).
 
 ---
 
@@ -124,6 +124,18 @@ make replay CLIP=fixtures/clips/wave-<stamp>.mp4    # same pipeline, no camera
 
 `make replay` re-runs a recorded clip through the identical code path, so a
 result you saw live is reproducible without you in front of the lens.
+
+## See it move
+
+```bash
+make model     # fetch the SO-101 model, hash-pinned (16.4 MB of meshes)
+make sim       # drive it from a synthetic hand and print the tracking table
+make sim ARGS="--video outputs/sim.mp4"    # and render a clip
+```
+
+The synthetic hand uses the committed fixture's **real** MediaPipe landmarks
+moved along a **known** path, so every error is measured against ground truth —
+which a recorded clip cannot give you.
 
 ## Verify
 

@@ -22,6 +22,9 @@ PHI_SIM = pathlib.Path("/Volumes/Crucial_X9/Projects/phi/simulation")
 MODEL = pathlib.Path(__file__).resolve().parent.parent / "assets" / "hand_landmarker.task"
 REFERENCE_PNG = FIXTURES / "images" / "reference_hands.png"
 
+#: Fetched by `make model` (16.4 MB of meshes), never committed.
+SCENE = pathlib.Path(__file__).resolve().parent.parent / "model" / "scene.xml"
+
 
 @pytest.fixture(scope="session")
 def golden() -> dict[str, Any]:
