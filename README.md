@@ -5,11 +5,14 @@
 Webcam hand-pose teleoperation for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100).
 One RGB camera. No depth sensor, no gloves, no markers.
 
-[![A hand on the left drives the SO-101 in simulation on the right](docs/media/teleop.gif)](docs/media/teleop.mp4)
+![A hand on the left drives the SO-101 in simulation on the right](docs/media/teleop.gif)
 
 **Left:** the camera, the 21 landmarks, and the live HUD — fps, clutch state, jaw
 openness, tool position in cm, per-stage latency. **Right:** the SO-101 in MuJoCo,
-following. Real time, unedited, one webcam. [Full 25 s clip](docs/media/teleop.mp4).
+following. Real time, unedited, one webcam.
+
+11 s of it, looping. The whole 25 s at full size is
+[`docs/media/teleop.mp4`](docs/media/teleop.mp4) (1.5 MB).
 
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi).
 

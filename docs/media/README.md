@@ -18,7 +18,10 @@ ffmpeg -ss 0 -t 11 -i in.mov -filter_complex \
    [b][p]paletteuse=dither=none:diff_mode=rectangle" docs/media/teleop.gif
 ```
 
-A GIF is used for the inline preview because it is the only format that renders
-and loops in a GitHub README without an upload step. 96 colours with dithering
+A GIF is used because it is the only format GitHub will render inline. A
+`<video>` tag is stripped by GitHub's markdown sanitizer (verified against
+`POST /markdown`: the tag renders as an empty paragraph), and both raw URLs
+serve the mp4 as `application/octet-stream`, which downloads rather than plays.
+So the mp4 is linked as a file, not promised as a player. 96 colours with dithering
 off measured smallest at acceptable quality: 128+bayer was 3.8 MB, 64+bayer
 2.8 MB but visibly dithered on flat wall, 96+none 3.0 MB and clean.
