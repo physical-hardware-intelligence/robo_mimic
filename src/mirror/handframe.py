@@ -97,20 +97,38 @@ def image_span(hand: HandLandmarks) -> float:
     return float(np.linalg.norm(delta))
 
 
+#: The optical axis, in normalized image coordinates. Offsets are measured from
+#: HERE, not from the frame corner -- see `image_position`.
+PRINCIPAL_POINT = 0.5
+
+
 def image_position(hand: HandLandmarks, aspect: float = 1.0) -> F64:
-    """Hand position in PALM-SPAN units. The differential signal for ADR-002.
+    """Hand position in PALM-SPAN units: (screen-x, screen-y, depth).
 
     The camera gives a bearing, not a position: a lateral move of `X` at
     distance `d` shifts the image by `X/d`. Apparent span `s` goes as `1/d`.
-    So dividing image offset by span cancels the distance:
+    So dividing the image offset by the span cancels the distance:
 
         (X/d) / (1/d) = X          <- lateral, in palm spans
         1/s                        <- depth, in palm spans
 
     Both come out in units of the operator's own hand, so a big hand and a small
     hand produce the same numbers. That is what removes per-operator
-    calibration. Only DIFFERENCES of this vector are meaningful; the origin is
-    the top-left of the frame and means nothing.
+    calibration.
+
+    THE OFFSET IS MEASURED FROM THE OPTICAL AXIS, NOT THE FRAME CORNER
+    An earlier version used `cx / span`. That looks harmless -- only differences
+    are used, so a constant offset should cancel -- but it does NOT cancel when
+    the span changes, because the span divides the offset. Measured on a hand
+    held dead centre and moved only in depth:
+
+        span x1.0   lateral drift 0.000 spans
+        span x1.2                 0.589
+        span x1.5                 1.179
+        span x2.0                 1.768      <- about 18 cm of tool motion
+
+    Pure depth motion was inventing lateral motion. `(cx - 0.5) / span` is zero
+    at the centre for every span, so it does not.
 
     `aspect` is height/width. Image y is normalized by height and x by width, so
     without it a non-square frame stretches vertical motion.
@@ -119,4 +137,11 @@ def image_position(hand: HandLandmarks, aspect: float = 1.0) -> F64:
     if span < 1e-9:
         raise DegenerateHandError("hand has zero apparent size")
     centre = hand.image[list(PALM), :2].mean(axis=0)
-    return np.array([centre[0] / span, centre[1] * aspect / span, 1.0 / span], dtype=np.float64)
+    return np.array(
+        [
+            (centre[0] - PRINCIPAL_POINT) / span,
+            (centre[1] - PRINCIPAL_POINT) * aspect / span,
+            1.0 / span,
+        ],
+        dtype=np.float64,
+    )

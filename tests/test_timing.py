@@ -107,9 +107,13 @@ def test_stats_never_lie_about_their_inputs(values: list[float]) -> None:
     row = budget.table()[0]
     assert isinstance(row, StageStats)
     assert row.samples == len(values)
-    assert min(values) <= row.mean_ms <= max(values)
+    # Tolerance, because the mean is a sum-then-divide: hypothesis found
+    # mean([1.69, 1.69, 1.69]) == 1.6900000000000002, which exceeds the max by
+    # 2e-16. The bound is mathematically exact and numerically is not.
+    slack = 1e-9 * max(1.0, abs(max(values)))
+    assert min(values) - slack <= row.mean_ms <= max(values) + slack
     assert row.max_ms == max(values)
-    assert row.p95_ms <= max(values)
+    assert row.p95_ms <= max(values) + slack
 
 
 def test_clock_is_reusable_via_measure() -> None:

@@ -61,9 +61,11 @@ def test_depth_gain_is_smaller_than_lateral_by_default() -> None:
     """Depth carries 7-25x the noise for the same information."""
     config = RetargetConfig()
     assert config.depth_scale_m_per_span < config.scale_m_per_span
-    assert np.array_equal(
-        config.axis_gains,
-        [config.scale_m_per_span, config.scale_m_per_span, config.depth_scale_m_per_span],
+    mapping = config.axis_map
+    assert abs(mapping[config.depth_axis, 2]) < abs(mapping[config.lateral_axis, 0])
+    assert abs(mapping[config.lateral_axis, 0]) == pytest.approx(config.scale_m_per_span)
+    assert abs(mapping[config.depth_axis, 2]) == pytest.approx(
+        config.depth_scale_m_per_span
     )
 
 
@@ -220,23 +222,42 @@ def test_engaging_commands_exactly_where_the_arm_already_is() -> None:
 
 
 def test_lateral_motion_uses_the_lateral_gain() -> None:
+    """Lateral hand motion moves the tool LATERALLY -- world y, index 1.
+
+    This test previously asserted index 0, which is the arm's REACH axis. It
+    passed, because it was checking what the code did rather than what it should
+    do, and so it encoded the axis-mapping bug instead of catching it. Live
+    testing caught it: "the arm doesn't move left or right".
+    """
     retargeter = Retargeter(CONFIG)
     retargeter.step(hand(image_centre=(0.5, 0.5)), HOME, 0, engage=True)  # type: ignore[arg-type]
     command = retargeter.step(hand(image_centre=(0.7, 0.5)), HOME, 33, engage=True)  # type: ignore[arg-type]
     assert command.target is not None
+    delta = command.target.position - HOME.position
     # 0.2 of frame width at a 0.2 span = 1.0 palm-span, times 0.10 m.
-    assert (command.target.position - HOME.position)[0] == pytest.approx(0.10, abs=1e-12)
+    assert delta[1] == pytest.approx(0.10, abs=1e-12)
+    assert abs(delta[0]) < 1e-12, "lateral motion must not become reach"
+    assert abs(delta[2]) < 1e-12
 
 
 def test_depth_motion_uses_the_smaller_depth_gain() -> None:
-    """The same 1.0 palm-span of motion moves the tool less in depth, on purpose."""
+    """Depth moves the tool's REACH -- world x, index 0 -- and less, on purpose.
+
+    Also previously asserted the wrong axis (index 2, up). The gain ratio was
+    right; the axis was not.
+    """
     retargeter = Retargeter(CONFIG)
-    retargeter.step(hand(image_span=0.20), HOME, 0, engage=True)  # type: ignore[arg-type]
-    command = retargeter.step(hand(image_span=0.25), HOME, 33, engage=True)  # type: ignore[arg-type]
+    retargeter.step(hand(image_centre=(0.5, 0.5), image_span=0.20), HOME, 0, engage=True)  # type: ignore[arg-type]
+    command = retargeter.step(  # type: ignore[arg-type]
+        hand(image_centre=(0.5, 0.5), image_span=0.25), HOME, 33, engage=True
+    )
     assert command.target is not None
-    delta_spans = 1 / 0.25 - 1 / 0.20
-    expected = CONFIG.depth_scale_m_per_span * delta_spans
-    assert (command.target.position - HOME.position)[2] == pytest.approx(expected, abs=1e-12)
+    delta = command.target.position - HOME.position
+    # Nearer camera -> larger span -> smaller 1/span -> negated to EXTEND reach.
+    expected = -CONFIG.depth_scale_m_per_span * (1 / 0.25 - 1 / 0.20)
+    assert delta[0] == pytest.approx(expected, abs=1e-12)
+    assert expected > 0.0, "moving the hand nearer must extend the arm"
+    assert abs(delta[1]) < 1e-12 and abs(delta[2]) < 1e-12
     ratio = CONFIG.scale_m_per_span / CONFIG.depth_scale_m_per_span
     assert ratio == pytest.approx(0.10 / 0.035, rel=1e-9)
 
@@ -382,3 +403,66 @@ def test_the_thresholds_clear_the_operators_tolerance_with_margin() -> None:
     assert margin == pytest.approx(0.05, abs=1e-9) or margin > 0.05, (
         f"want ~one tolerance-width of margin, got {margin:.4f}"
     )
+
+
+# --- regression: found by live testing, 2026-09-17 ------------------------------
+def test_each_screen_axis_drives_the_right_world_axis() -> None:
+    """THE BUG that made left/right do nothing.
+
+    `image_position` returns (screen-x, screen-y, depth); the arm's world frame
+    is (reach, lateral, up). An earlier version added them element-wise by
+    index, which produced:
+
+        palm RIGHT  -> +5.0 cm of REACH      (should be lateral)
+        palm UP     -> -3.8 cm of LATERAL    (should be up)
+
+    Live, that read as "left/right does nothing" -- because left/right was being
+    spent on reach, which runs out against the workspace almost at once.
+    """
+    config = RetargetConfig()
+    mapping = config.axis_map
+
+    # screen-x drives lateral (y) and ONLY lateral
+    assert mapping[1, 0] != 0.0
+    assert mapping[0, 0] == 0.0 and mapping[2, 0] == 0.0
+    # screen-y drives up (z) and only up, with a sign flip (image y grows down)
+    assert mapping[2, 1] < 0.0
+    assert mapping[0, 1] == 0.0 and mapping[1, 1] == 0.0
+    # depth drives reach (x) and only reach, negated so nearer = further out
+    assert mapping[0, 2] < 0.0
+    assert mapping[1, 2] == 0.0 and mapping[2, 2] == 0.0
+
+
+@pytest.mark.parametrize(
+    ("label", "centre", "span", "axis", "sign"),
+    [
+        ("palm right", (0.6, 0.5), 0.2, 1, +1),
+        ("palm left", (0.4, 0.5), 0.2, 1, -1),
+        ("palm up", (0.5, 0.4), 0.2, 2, +1),
+        ("palm down", (0.5, 0.6), 0.2, 2, -1),
+        ("palm closer", (0.5, 0.5), 0.3, 0, +1),
+        ("palm further", (0.5, 0.5), 0.15, 0, -1),
+    ],
+)
+def test_hand_motion_moves_the_tool_on_exactly_one_axis(
+    label: str, centre: tuple[float, float], span: float, axis: int, sign: int
+) -> None:
+    """Each of the six directions must move exactly one world axis, the right
+    way. A hand on the optical axis keeps the three channels independent."""
+    retargeter = Retargeter(RetargetConfig())
+    start = make_hand(image_centre=(0.5, 0.5), image_span=0.2)
+    retargeter.step(start, HOME, 0, engage=True)  # type: ignore[arg-type]
+    moved = make_hand(image_centre=centre, image_span=span)
+    command = retargeter.step(moved, HOME, 33, engage=True)
+
+    assert command.target is not None
+    delta = command.target.position - HOME.position
+    assert np.sign(delta[axis]) == sign, f"{label}: axis {axis} went {delta[axis]:+.4f}"
+    for other in range(3):
+        if other != axis:
+            assert abs(delta[other]) < 1e-12, f"{label}: leaked {delta[other]:+.4f} into {other}"
+
+
+def test_axis_map_rejects_a_non_permutation() -> None:
+    with pytest.raises(ValueError, match="permutation"):
+        RetargetConfig(lateral_axis=1, vertical_axis=1, depth_axis=0)

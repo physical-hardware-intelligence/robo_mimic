@@ -25,6 +25,32 @@ pitch angles are achievable. If hand tilt sets the pitch, most frames have no IK
 solution and the arm stutters between solved and unsolvable. Position-only
 first; turn `follow_orientation` on once motion is proven in sim.
 
+WHICH SCREEN AXIS DRIVES WHICH WORLD AXIS
+-----------------------------------------
+`image_position` returns (screen-x, screen-y, depth). The arm's world frame is
+(x = reach, radially out from the base; y = lateral; z = up). Those are NOT the
+same triple in the same order, and an earlier version added them element-wise
+by index, which silently produced:
+
+    palm RIGHT  -> tool +5.0 cm of REACH      (should be lateral)
+    palm UP     -> tool -3.8 cm of LATERAL    (should be up)
+    palm CLOSER -> -2.4 reach, -6.0 lateral, -4.0 up, all at once
+
+Live, that read as "the gripper follows my pinch, depth sort of works backwards,
+and left/right does nothing at all" -- because left/right was being spent on
+reach, which runs out against the workspace almost immediately.
+
+`axis_map` states the correspondence explicitly instead of relying on index
+coincidence:
+
+    world x (reach)   <-  -depth_scale  * depth      toward the camera = extend
+    world y (lateral) <-  +lateral_gain * screen-x
+    world z (up)      <-  -lateral_gain * screen-y   image y grows DOWNWARD
+
+Every sign is configurable, because which lateral direction is "right" depends
+on where the arm is standing relative to the operator, and that is a fact about
+the room rather than about the code.
+
 WHY DEPTH GETS A SMALLER GAIN
 `image_position` is `(cx/s, cy*a/s, 1/s)`. Differentiating, lateral error goes
 as `dcx/s` but depth error goes as `ds/s**2` -- `s` SQUARED. With `s ~ 0.155`
@@ -96,6 +122,18 @@ class RetargetConfig:
     #: Map hand rotation to tool rotation. OFF by default -- see the docstring.
     follow_orientation: bool = False
 
+    #: Which world axis each screen axis drives. See the module docstring.
+    #: 0 = reach (x), 1 = lateral (y), 2 = up (z).
+    lateral_axis: int = 1
+    vertical_axis: int = 2
+    depth_axis: int = 0
+    #: Signs. `vertical` is negative because image y grows downward; `depth` is
+    #: negative because the proxy is `1/span`, which SHRINKS as the hand nears
+    #: the camera -- so a negative sign makes "hand toward camera" extend the arm.
+    lateral_sign: float = 1.0
+    vertical_sign: float = -1.0
+    depth_sign: float = -1.0
+
     def __post_init__(self) -> None:
         if self.scale_m_per_span <= 0.0 or self.depth_scale_m_per_span <= 0.0:
             raise ValueError("scales must be positive")
@@ -106,13 +144,26 @@ class RetargetConfig:
             )
         if self.lost_grace_ms < 0:
             raise ValueError("grace must be non-negative")
+        axes = (self.lateral_axis, self.vertical_axis, self.depth_axis)
+        if sorted(axes) != [0, 1, 2]:
+            raise ValueError(
+                f"lateral/vertical/depth axes must be a permutation of 0,1,2; got {axes}"
+            )
 
     @property
-    def axis_gains(self) -> F64:
-        """Per-axis metres per palm-span, in image_position's (x, y, depth) order."""
-        return np.array(
-            [self.scale_m_per_span, self.scale_m_per_span, self.depth_scale_m_per_span]
-        )
+    def axis_map(self) -> F64:
+        """3x3 mapping proxy deltas to world deltas, in metres per palm-span.
+
+        `world_delta = axis_map @ (screen-x, screen-y, depth)`. A matrix rather
+        than three gains because the correspondence is a permutation with signs,
+        and writing it as one makes the thing that was wrong impossible to get
+        wrong silently.
+        """
+        matrix = np.zeros((3, 3))
+        matrix[self.lateral_axis, 0] = self.lateral_sign * self.scale_m_per_span
+        matrix[self.vertical_axis, 1] = self.vertical_sign * self.scale_m_per_span
+        matrix[self.depth_axis, 2] = self.depth_sign * self.depth_scale_m_per_span
+        return matrix
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,7 +284,7 @@ class Retargeter:
             raise RuntimeError("engaged with no anchor")
 
         delta = image_position(hand, self.config.aspect) - anchor.hand_position
-        position = anchor.tool_position + self.config.axis_gains * delta
+        position = anchor.tool_position + self.config.axis_map @ delta
 
         if not self.config.follow_orientation:
             return Pose(position=position, rotation=anchor.tool_rotation)

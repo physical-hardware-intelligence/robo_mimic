@@ -237,3 +237,48 @@ def test_zero_size_hand_on_screen_raises() -> None:
     assert image_span(broken) == 0.0
     with pytest.raises(DegenerateHandError, match="zero apparent size"):
         image_position(broken)
+
+
+# --- regression: found by live testing, 2026-09-17 ------------------------------
+def test_pure_depth_motion_does_not_invent_lateral_motion() -> None:
+    """THE BUG: the proxy divided `cx` by the span instead of `cx - 0.5`.
+
+    Only differences are used, so a constant offset looks harmless -- but it does
+    NOT cancel when the span changes, because the span divides the offset.
+    Measured on a hand held dead centre and moved only in depth:
+
+        span x1.0   lateral drift 0.000 spans
+        span x1.2                 0.589
+        span x1.5                 1.179
+        span x2.0                 1.768      <- roughly 18 cm of tool motion
+
+    Pure depth motion was generating lateral motion. Offsets are now measured
+    from the optical axis, where `(0.5 - 0.5)/span` is zero for every span.
+    """
+    reference = None
+    for scale in (1.0, 1.2, 1.5, 2.0, 3.0):
+        hand = make_hand(image_centre=(0.5, 0.5), image_span=0.2 * scale)
+        proxy = image_position(hand, aspect=1.0)
+        if reference is None:
+            reference = proxy
+            continue
+        drift = float(np.hypot(*(proxy[:2] - reference[:2])))
+        assert drift == 0.0, f"span x{scale}: {drift:.3e} spans of phantom lateral motion"
+
+
+@given(
+    span=st.floats(0.05, 0.45),
+    offset=st.floats(-0.3, 0.3),
+)
+@settings(max_examples=200, deadline=None)
+def test_a_hand_on_the_optical_axis_has_zero_lateral_proxy(
+    span: float, offset: float
+) -> None:
+    """The invariant behind the fix, stated directly: on the axis, zero."""
+    centred = image_position(make_hand(image_centre=(0.5, 0.5), image_span=span))
+    assert abs(float(centred[0])) < 1e-12
+    assert abs(float(centred[1])) < 1e-12
+
+    # And off-axis motion still scales with 1/span, as the geometry requires.
+    moved = image_position(make_hand(image_centre=(0.5 + offset, 0.5), image_span=span))
+    assert float(moved[0]) == pytest.approx(offset / span, rel=1e-12)

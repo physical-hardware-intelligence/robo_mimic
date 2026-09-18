@@ -16,20 +16,26 @@ THE PIPELINE, AND WHERE THE TIME GOES
             -> sim.set_target -> sim.advance (16 x 2 ms) -> render
 
 Every stage is timed separately and shown live, because a single FPS number
-hides which stage is the problem. Measured on this machine:
+hides which stage is the problem. MEASURED IN REAL USE, from a live session
+recording rather than a synthetic loop:
 
-    capture (camera)                     ~1.00 ms
-    mediapipe, VIDEO mode                 3.87 ms
-    retarget + project + safety + sim     0.56 ms
-    render + side-by-side                16.56 ms   <- the dominant cost
-    TOTAL                                21.98 ms of a 32.26 ms frame
+    capture (camera)                13.6 - 17.9 ms   waiting on the sensor
+    mediapipe, VIDEO mode                  11.7 ms
+    retarget + project + safety + sim  0.8 -  1.5 ms
+    render + side-by-side                  ~13.0 ms
+    TOTAL                           40.2 - 63.5 ms  ->  13 - 20 fps
 
-Two things that table corrects:
+A correction to an earlier claim of mine: I first measured MediaPipe at 3.87 ms
+in video mode and reported a 3x saving over IMAGE mode. That benchmark fed the
+SAME frame repeatedly, so tracking never lost lock and the palm detector never
+re-ran. On 181 distinct moving frames from a real session:
 
-  MediaPipe in VIDEO mode costs 3.87 ms, not the 11.8 ms measured in IMAGE mode
-  in Phase 1. Video mode reuses the previous frame's hand box and skips the palm
-  detector while tracking holds -- a 3x saving, and the reason this script uses
-  it.
+    video mode   12.17 ms mean, p95 20.02,  hand found 173/181  (96 percent)
+    image mode   23.98 ms mean, p95 31.37,  hand found  67/181  (37 percent)
+
+So video mode is the right choice -- but for RELIABILITY far more than speed.
+Image mode loses the hand on two thirds of moving frames. ~12 ms is the honest
+cost, and it matches what the live overlay reports.
 
   RENDERING, not perception, is the bottleneck. Attributed precisely:
 
@@ -163,6 +169,12 @@ class PixelSource:
             self._cap = cv2.VideoCapture(camera)
             self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
             self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            # Ask for the shallowest queue the backend will give. `capture` was
+            # measured at 13.6-17.9 ms in real use: most of that is waiting on
+            # the sensor, which is unavoidable, but a deep queue adds latency on
+            # top by handing back stale frames. macOS AVFoundation may ignore
+            # this; setting it costs nothing when it does.
+            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             if not self._cap.isOpened():
                 raise RuntimeError(
                     f"cannot open camera {camera}.\n"
