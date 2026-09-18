@@ -5,6 +5,12 @@
 Webcam hand-pose teleoperation for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100).
 One RGB camera. No depth sensor, no gloves, no markers.
 
+[![A hand on the left drives the SO-101 in simulation on the right](docs/media/teleop.gif)](docs/media/teleop.mp4)
+
+**Left:** the camera, the 21 landmarks, and the live HUD — fps, clutch state, jaw
+openness, tool position in cm, per-stage latency. **Right:** the SO-101 in MuJoCo,
+following. Real time, unedited, one webcam. [Full 25 s clip](docs/media/teleop.mp4).
+
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi).
 
 > **Phase 6 of 7.** Live hand → simulated arm. Hardware is next.
@@ -15,7 +21,7 @@ Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-har
 ## Run it
 
 ```bash
-make setup     # uv venv (off exFAT) + all extras
+make setup     # venv off exFAT, exact versions from uv.lock
 make doctor    # deps, model, camera permission, pipeline -- one line each
 make model     # fetch the SO-101 model, hash-pinned (16.4 MB of meshes)
 make teleop    # LIVE: your hand on the left, the simulated arm on the right
