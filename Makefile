@@ -1,5 +1,5 @@
 # robo_mimic -- one command per thing. `make help` lists them.
-.PHONY: help setup lock check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean
+.PHONY: help setup lock check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean scrub
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n",$$1,$$2}'
@@ -81,3 +81,15 @@ bench: model  ## Per-stage latency budget, no camera and no window
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache; find . -name __pycache__ -prune -exec rm -rf {} +
+	$(MAKE) --no-print-directory scrub
+
+# exFAT stores no extended attributes, so macOS externalises every xattr into a
+# ._* sidecar. git writes new pack files with a com.apple.provenance xattr, so a
+# `git gc` or `git clone` here leaves ._pack-*.idx next to the real index -- and
+# git then tries to READ it as a pack index:
+#   error: non-monotonic index .git/objects/pack/._pack-<sha>.idx
+# Harmless but printed on every later git command. Deleting the sidecar deletes
+# the xattr, which is the whole fix. Nothing prevents it recurring; run this
+# after any operation that writes a pack.
+scrub:  ## Delete the ._* AppleDouble files exFAT forces macOS to write
+	find . -name '._*' -delete
