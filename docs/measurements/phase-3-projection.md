@@ -107,7 +107,9 @@ Was **85.50 ms** before bounding the pitch sweep: the wrong pan branch swept the
 full period (361 IK calls) because a given wrist axis is achievable on only one
 branch. `MAX_PITCH_SHIFT_DEG = 30` caps it at 61 mostly-early-return calls.
 
-**Budget**: MediaPipe 11.8 ms + project 2.8 ms = **14.6 of 33 ms**.
+**Budget**: `project` later fell to **0.30 ms** once the wasted pan branch was
+found in Phase 6 — see [phase-6](phase-6-live.md). The 2.79 ms here is with both
+branches swept.
 
 ## Bugs found, and how
 

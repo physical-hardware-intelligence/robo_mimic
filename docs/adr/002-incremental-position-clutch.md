@@ -38,8 +38,14 @@ person, so this is a per-operator calibration problem wearing a feature's clothi
 ## Decision
 
 - **Orientation: absolute.** Hand orientation maps directly to tool orientation.
-- **Position: incremental, through an explicit clutch.** Pinch to engage; hand motion becomes
-  scaled tool motion; release to freeze. Like lifting a mouse off the desk.
+- **Position: incremental, through an explicit clutch.** Engage, move, release to freeze.
+  Like lifting a mouse off the desk.
+
+> **The clutch gesture is superseded.** This said *"pinch to engage"*.
+> [ADR-003](003-clutch-on-a-key-gripper-on-the-pinch.md) moved the clutch to a **held key**
+> and gave the pinch to the **gripper**, because a pinch *is* low openness and one gesture
+> cannot mean both. The incremental-position finding below is unaffected — it is why the
+> clutch exists at all.
 
 ## Consequences
 

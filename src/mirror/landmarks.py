@@ -1,48 +1,34 @@
-"""MediaPipe hand landmarks, wrapped so the rest of the package never sees MediaPipe.
+"""MediaPipe hand landmarks, wrapped so the rest of the package never sees it.
 
-WHAT MEDIAPIPE ACTUALLY GIVES YOU
----------------------------------
-Two coordinate systems per hand, 21 points each, and they are NOT the same data
-in different units. Measured on the reference image (2026-09-16):
-
-    world/image pair-distance ratio spread: 2.83x and 3.72x
-
-A pure rescale would give a spread of exactly 1.00x. It does not, so the world
-output is a genuinely separate 3-D reconstruction rather than a scaled
-projection. That is why orientation taken from `world` is trustworthy.
-
-    image  (21,3)  x,y in [0,1] of the frame; z is depth RELATIVE TO THE WRIST,
-                   "roughly the same scale as x". Measured wrist z: -3.3e-07.
+TWO COORDINATE SYSTEMS, AND THEY ARE NOT THE SAME DATA RESCALED
+    image  (21,3)  x,y in [0,1] of the frame; z is depth relative to THE WRIST.
                    Use for: where the hand is ON SCREEN. Never for metric depth.
-
-    world  (21,3)  metres. Origin is NOT the mean of the 21 points (that sits
-                   2.5-2.7 cm away). Measured, the origin tracks the mean of the
-                   four finger MCP knuckles (5, 9, 13, 17) to 0.44 cm / 0.75 cm
-                   -- the PALM CENTRE. Good news: knuckles barely move relative
-                   to each other, so this origin is stable under finger motion.
+    world  (21,3)  metres, origin at the PALM CENTRE (measured -- not the
+                   21-point centroid, which sits 2.5 cm away).
                    Use for: hand SHAPE and ORIENTATION. Never for position.
 
-Neither origin is the camera, so neither tells you how far away the hand is.
-That is the whole reason for ADR-002 (position is incremental, not absolute).
+Their pair-distance ratios spread ~3x, where a pure rescale would give exactly
+1x, so `world` is a separate 3-D reconstruction. That is why orientation taken
+from it is trustworthy.
 
-VERSION PINNING IS NOT OPTIONAL
--------------------------------
-mediapipe 1.0.1 CRASHES on macOS arm64 inside its own graph:
+Neither origin is the camera, so neither says how far away the hand is. Hence
+ADR-002: position is incremental, not absolute.
 
-    graph_service.h:139] Check failed: service_ Service is unavailable.
-    -[DrishtiMetalHelper initWithCalculatorContext:]
-    mediapipe::api2::TensorsToDetectionsCalculator::Open()
+THE VERSION PIN IS LOAD-BEARING
+mediapipe 1.0.1 ABORTS on macOS arm64 inside its own palm detector, and
+`delegate=CPU` does not avoid it. 0.10.35 runs clean.
 
-`TensorsToDetectionsCalculator` is the palm-detector stage, and it initialises
-the Metal helper unconditionally -- passing `delegate=CPU` does not avoid it.
-0.10.35 works. The pin in pyproject.toml is load-bearing.
+VIDEO MODE, NOT IMAGE MODE
+Video mode reuses the previous frame's hand box. On real moving frames it finds
+the hand 96 percent of the time against image mode's 37 -- reliability first,
+speed second.
 
 DETERMINISM
------------
-Within a pinned version on one machine, `detect()` is BIT-IDENTICAL: 0.000e+00
-deviation over 30 repeat calls and over 5 freshly constructed detectors. So the
-golden fixtures can assert exact equality rather than a tolerance. Across
-versions nothing is guaranteed -- 1.0.1 does not even run.
+Within a pinned version on one machine, `detect()` is bit-identical, so the
+goldens assert exact equality. Across versions nothing is guaranteed.
+
+Figures, including the JPEG-decoder trap and the noise floor:
+docs/measurements/phase-1-perception.md
 """
 
 from __future__ import annotations

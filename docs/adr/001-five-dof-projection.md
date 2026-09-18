@@ -27,8 +27,13 @@ planar; it is a plane sitting 18.1 mm to one side.
 ## Decision
 
 `project.py` maps a desired 6-DOF tool pose to the nearest achievable 5-DOF pose by
-**discarding rotation about the arm-plane normal (tool yaw)** and keeping position, tool
-pitch, and tool roll.
+**discarding rotation about `ĉ = n̂ × â`** — in the arm's plane, perpendicular to the wrist
+axis — and keeping position, tool pitch, and tool roll.
+
+> **Corrected 2026-09-17.** This originally read *"rotation about the arm-plane normal
+> (tool yaw)"*. Rotation about the normal **is the pitch**, which is fully achievable. The
+> physical description below was right all along; only the named axis was wrong. See
+> [*Which axis, exactly*](#correction-2026-09-17-which-axis-exactly).
 
 The discarded angle is **returned as a first-class value**, not swallowed. The operator UI
 displays it live.
@@ -57,11 +62,18 @@ targets and no solver failures mid-motion.
 
 ## How this is verified
 
-**The residual must be a pure rotation about the arm-plane normal, and nothing else.**
+**The residual must be confined to `ĉ = n̂ × â`, and nothing else.**
 
 ```
-project(T) differs from T by exactly Rot(plane_normal, yaw_discarded)
+project(T) differs from T by a rotation about c = n x a
 ```
+
+Measured: `|residual axis · ĉ|` **min 0.9937**, median 0.9994; the reported loss matches the
+applied tilt to **p99 0.148°**; orientation loss never leaks into position (**< 1e-9 m**
+under a 60° tilt).
+
+Not asserted as *exact*, deliberately: the roll correction is a rotation about `â`, and
+rotations do not commute, so the total residual is a composition.
 
 Tested over 10,000 random poses (Phase 3). If a bug leaks position error into the
 projection, this invariant catches it; nothing else would.
@@ -73,7 +85,7 @@ Measured on the vendored modules: joint-space recovery **3.21e-11 deg**, task-sp
 
 ---
 
-## Correction (2026-09-17): which axis, exactly
+## Correction (2026-09-17): which axis, exactly {#correction-2026-09-17-which-axis-exactly}
 
 This ADR said the projection discards *"rotation about the arm-plane normal (tool yaw)"*. **The named axis was wrong.** Rotation about the plane normal **is the pitch**, which is fully achievable.
 

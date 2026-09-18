@@ -1,98 +1,50 @@
 """The last thing between a noisy camera and a real servo. Pure, and total.
 
-Nothing here is polish. Every stage exists because something measured demands
-it, and the module's contract is a hard guarantee rather than a best effort:
+THE CONTRACT
+    For ANY input -- None, NaN, +/-inf, 1e9, a malformed dict, a bad timestep --
+    the emitted joint vector is finite, inside the MODEL's limits, and within
+    the velocity cap.
 
-    for ANY input -- NaN, empty, a hand teleporting across the frame, a
-    commanded pose that flips IK branches -- the emitted joint vector is
-    finite, inside the model's own limits, and within the velocity cap.
+    Stated as an invariant and fuzzed, not demonstrated by example.
+    30 000 adversarial frames, 0 escapes: docs/measurements/phase-4-safety.md
 
-WHY A FILTER IS NEEDED AT ALL
------------------------------
-Measured: sigma = 1 brightness level of camera noise moves the landmarks enough
-to shift the tool 0.226 mm laterally and 2.331 mm in depth, and the IK amplifies
-tool error into joint error at roughly 0.6 deg/mm. So joint tremor of a degree
-or more is INTRINSIC to single-webcam tracking. It is not a bug upstream and it
-will not go away.
+WHY A FILTER AT ALL
+Camera noise shifts the landmarks, and the IK amplifies tool error into joint
+error at roughly 0.6 deg/mm. A degree of joint tremor is INTRINSIC to
+single-webcam tracking. It will not go away upstream.
 
-WHY THE FILTER MUST BE ADAPTIVE
--------------------------------
-    perception rate   31.0 Hz  (camera-bound)
-    its Nyquist       15.5 Hz
-    arm resonance     17.9 Hz  (zeta = 0.250, 24.4 percent overshoot on a step)
+WHY IT MUST BE ADAPTIVE
+Perception runs at ~31 Hz, so its Nyquist is 15.5 Hz -- and the arm's resonance
+is 17.9 Hz, ABOVE it. We cannot even observe the thing we must not excite. So
+the filter has to cut well below 15.5 Hz and assume the worst above it.
 
-The resonance sits ABOVE the perception Nyquist. We cannot even observe it at 31
-Hz -- a 17.9 Hz disturbance aliases to 13.1 Hz in the sampled signal -- so the
-filter has to cut well below 15.5 Hz and simply assume the worst above it.
+But a low fixed cutoff costs lag, and lag is what makes teleoperation feel dead.
+An adaptive cutoff refuses the trade: heavy when the hand is still (jitter
+visible, lag not), open when it moves (lag visible, jitter not).
 
-But cutting that low costs lag, and lag is what makes teleoperation feel dead:
+    cutoff = fc_min + beta * |smoothed velocity|,  capped at the Nyquist of dt
 
-    cutoff    first-order lag    attenuation at 15.5 Hz    frames at 31 Hz
-    1 Hz          159.2 ms             -23.8 dB                 4.93
-    2 Hz           79.6 ms             -17.9 dB                 2.47
-    5 Hz           31.8 ms             -10.3 dB                 0.99
-
-A fixed cutoff must pick one point on that curve and live with it. An ADAPTIVE
-cutoff does not: it filters hard when the hand is nearly still -- which is when
-jitter is visible and lag is not -- and opens up when the hand moves, which is
-when lag is visible and jitter is not. That is the 1-euro filter (Casiez,
-Roussel, Vogel), designed for exactly this problem.
-
-    cutoff(t) = fc_min + beta * |smoothed velocity|
-
-WHY A RATE LIMIT TOO -- IT IS NOT THE SAME JOB
-----------------------------------------------
+FILTER AND RATE LIMIT ARE DIFFERENT JOBS
 A low-pass attenuates SMALL, FAST noise. A rate limiter caps LARGE, FAST steps.
-Neither substitutes for the other: jitter passes straight through a rate limiter
-(it is already under the cap), and a tracking glitch that teleports the hand
-passes a low-pass as a big smooth lunge. They target different failure modes.
+Jitter passes straight through a rate limiter; a tracking teleport passes a
+low-pass as one big smooth lunge. Both are needed.
 
-WHY A DISCONTINUITY GUARD, AND WHAT IT MAY BE MEASURED AGAINST
---------------------------------------------------------------
-Transient garbage -- one frame of a flipped IK branch, a landmark glitch -- must
-not be pursued at all. The rate limiter already bounds how FAST the arm chases
-any target, so the guard's job is narrower: drop the frame entirely.
+THE GLITCH GUARD MEASURES AGAINST THE PREVIOUS INPUT
+Not the previous output. Because the output lags behind -- the rate limiter
+working as intended -- sustained fast motion looks like a permanent
+discontinuity against it, and the arm freezes forever. Measured that way once:
+worst velocity 0.0000 deg/s over 30 000 frames. Safe and useless.
 
-The subtlety is what "a jump" is measured against. Comparing the input to the
-previous OUTPUT is wrong, and fuzzing showed why: because the output lags behind
-(that is the rate limiter working), a sustained fast motion looks like a
-permanent discontinuity and the arm freezes forever. Measured: with the guard
-against the output, 30000 adversarial frames produced a worst joint velocity of
-0.0000 deg/s -- nothing moved, ever.
+NO FIRST-COMMAND EXEMPTION
+The limiter always starts from a KNOWN posture and rate-limits every frame
+including the first. An exemption here cost 3410 deg/s in three frames. On
+hardware: read `Present_Position`, pass it to `reset()`.
 
-So the guard compares each input to the PREVIOUS INPUT. A one-frame glitch is a
-spike in that signal and is dropped; a genuine fast move is smooth in it and
-passes through to the rate limiter. The reference is updated either way, so a
-target that really has moved is followed from the next frame -- one frame of
-hold, not a permanent refusal.
+ORDER, AND WHY CLAMPING IS LAST
+    reject non-finite -> glitch guard -> filter -> rate limit -> clamp
 
-Branch switches that PERSIST are not this module's job: `project` already
-prefers the branch nearest the current posture. All the rate limiter can promise
-is that any pursuit happens at or below the velocity cap.
-
-THERE IS NO FIRST-COMMAND EXEMPTION
------------------------------------
-An earlier version adopted the first command directly, on the reasoning that
-filtering from an arbitrary origin would drag the arm in from nowhere. Fuzzing
-found the hole in three frames: a couple of dropped frames report the home
-posture while leaving the internal state unset, so the next real command took
-the exemption and moved a joint 109.9999 deg in one frame -- 3410 deg/s against
-a 120 deg/s cap.
-
-So the limiter now always starts from a KNOWN posture and rate-limits every
-frame from it, including the first. Startup becomes a controlled ramp instead of
-a jump, which is what was wanted anyway. On hardware: read `Present_Position`,
-pass it to `reset()`, and the first command is then measured from where the arm
-actually is.
-
-ORDER OF OPERATIONS, AND WHY CLAMPING IS LAST
----------------------------------------------
-    reject non-finite -> discontinuity guard -> filter -> rate limit -> clamp
-
-Clamping last is what makes the limit guarantee unconditional. It also cannot
-undo the rate limit: if the previous value is in range and the new one is
-clamped into range, the clamp moves it TOWARD the previous value, so
-|clamped - previous| <= |unclamped - previous|. The velocity cap survives.
+Clamping last makes the limit guarantee unconditional, and it cannot undo the
+rate limit: clamping moves a value TOWARD the previous one.
 """
 
 from __future__ import annotations

@@ -113,7 +113,7 @@ class SyntheticSource:
 
     Bypasses capture and MediaPipe entirely -- it yields `HandLandmarks`, not
     pixels -- so the loop can be benchmarked without a camera. The perception
-    cost it omits was measured separately: 11.8 ms p90.
+    cost it omits was measured separately: ~12 ms on moving frames.
     """
 
     needs_detector = False

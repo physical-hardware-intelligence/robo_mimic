@@ -1,73 +1,40 @@
-"""Desired pose -> joint angles the arm can actually reach. Pure.
+"""Desired pose -> joint angles the arm can actually reach. Pure, and total.
 
-This is the module that was missing: `retarget` emits a `Pose`, the IK wants
+The module that was missing: `retarget` emits a `Pose`, the IK wants
 `(position, pitch, roll)`, and nothing joined them up.
 
-THE 5-DOF CONSTRAINT, AS ONE EQUATION
--------------------------------------
-Measured over 3000 random in-limit poses:
+THE 5-DOF CONSTRAINT IS ONE EQUATION
+    a . n = 0       a = the tool frame's x-axis,  n = the arm-plane normal
 
-    the tool frame's x-axis is the WRIST/ROLL axis
-      - unmoved by 37 deg of wrist_roll          7.85e-17
-      - confined to the arm plane, always        0.000000000 (min = median = max)
+The tool's x-axis IS the wrist/roll axis, and it never leaves the arm's plane.
+Everything here follows from that line.
 
-So the entire constraint is:
+So at a fixed position the achievable rotations are a 2-parameter family --
+rotate about `n` (the pitch) and about `a` (the roll) -- and the ONE direction
+you cannot have is `c = n x a`: in the plane, perpendicular to the wrist.
 
-    a . n = 0        a = tool x-axis (wrist axis),  n = arm-plane normal
+    This corrects ADR-001, which named the plane normal. Rotation about the
+    normal IS the pitch, which is fully achievable.
 
-Everything else follows. The achievable rotations at a fixed position are a
-2-parameter family: rotate about `n` (that is the pitch) and about `a` (that is
-the roll). The MISSING direction is `c = n x a`, measured over 1777 samples
-(154 IK branch flips rejected):
+THE GEOMETRY, all verified against the FK
+    n = (sin pan, cos pan, 0)
+    psi = atan2(a . z, a . r)        the wrist axis's angle within the plane
+    pitch = pi - psi                 mod 2 pi
 
-    |pitch axis . n|   1.0000000  (min = median = max)   pitch IS about n
-    |roll axis  . n|   0.0000000                         roll lies in the plane
-    |MISSING     . n|  0.0000000                         so does the missing axis
-    |MISSING     . a|  0.0000000                         perpendicular to the wrist
+THREE LOSSES, REPORTED SEPARATELY RATHER THAN SUMMED
+    out_of_plane_deg   structural. Five joints, six numbers. Unfixable.
+    pitch_shift_deg    joint limits. Only ~14-20 percent of pitches are
+                       reachable at a given position.
+    roll_clamp_deg     `wrist_roll`'s ~40 deg dead sector.
 
-CORRECTION TO ADR-001
-ADR-001 says the discarded rotation is "about the arm-plane normal". That is
-wrong: rotation about the normal is the PITCH, which is fully achievable. The
-discarded axis lies IN the plane, perpendicular to the wrist axis. The physical
-description in ADR-001 ("you cannot yaw the hand out of the arm's plane") was
-right; only the named axis was wrong.
+Summing them would hide which one the operator can do something about.
 
-THE GEOMETRY, ALL VERIFIED AGAINST THE FK
------------------------------------------
-    n = (sin pan, cos pan, 0)          worst error 1.25e-16
-    r = (cos pan, -sin pan, 0)         in-plane horizontal, r . n = 1.67e-16
-    psi = atan2(a . z, a . r)          in-plane angle of the wrist axis
-    pitch = pi - psi   (mod 2 pi)      worst error 1.02e-13 deg
+NEVER FAILS
+Always returns an in-limits, commandable result. A solver that returns None
+mid-motion is a stutter.
 
-TWO INDEPENDENT SOURCES OF ORIENTATION ERROR
---------------------------------------------
-1. `out_of_plane_deg` -- STRUCTURAL. The arm has five joints and a pose has six
-   numbers. Unavoidable, and reported so the operator learns the machine rather
-   than suspecting a bug.
-2. `pitch_shift_deg` -- JOINT LIMITS. Measured: only ~14-20 percent of pitches
-   are reachable at a given position (mean 19.9 percent over one full period,
-   14.0 percent over a realistic workspace box). When the wanted pitch is not
-   among them we take the nearest that is, and say by how much.
-
-COST, AND THE BRANCH THAT WAS WASTING IT
-A reachable pose needs ONE IK call. Measured in the live loop, this was making
-62 per frame -- 8.47 ms, the single largest stage in the whole pipeline, larger
-than MediaPipe. Counting where they went:
-
-    pan branch that won:  first candidate 0 / 120,  second 120 / 120
-
-The near-useless branch was sweeping its full 61-step pitch bound to no purpose
-every frame, because a given wrist axis is achievable on only ONE branch. Two
-changes, both of which also make the result safer:
-
-  1. Try the branch NEAREST the arm's current pan first. Branch continuity is
-     already a requirement -- switching branches slams the arm -- so preferring
-     the near one is not merely an optimisation.
-  2. Stop as soon as a branch yields an EXACT solution (no pitch shift, no roll
-     clamp). Nothing on the other branch can beat exact, and the only remaining
-     tiebreaker was joint travel, which step 1 already minimises.
-
-Result: 62 IK calls -> 1, and 8.47 ms -> 0.15 ms.
+Figures, and the four bugs the tests caught:
+docs/measurements/phase-3-projection.md
 """
 
 from __future__ import annotations

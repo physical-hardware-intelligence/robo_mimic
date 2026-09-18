@@ -1,69 +1,48 @@
 """Hand -> desired tool pose + jaw opening. The only stateful pure module.
 
 WHAT DRIVES WHAT (ADR-003)
-    a held key      -> clutch. Motion only while it is down.
+    a held key      -> the clutch. Motion only while it is down.
     hand position   -> tool position, incremental from wherever you engaged.
     thumb-index gap -> jaw opening, continuously.
-    hand rotation   -> tool rotation, OFF by default. See below.
+    hand rotation   -> tool rotation. OFF by default.
 
     DISENGAGED --key down--> ENGAGED --key up--> DISENGAGED
-                                |
-                          hand lost > grace
+                                |  hand lost > grace
                                 v
                            DISENGAGED
 
 WHY THE CLUTCH IS NOT A PINCH
 A pinch IS low openness, so one gesture cannot mean both "engage motion" and
-"close the jaw" -- you could never approach an object with the gripper open,
-which is how grasping works. Splitting them frees the pinch for its natural job.
-A held key also cannot false-trigger the way a gesture threshold can, which
-makes it a deadman switch rather than a UX preference.
-
-WHY ORIENTATION IS OFF BY DEFAULT
-The arm is 5-DOF. Measured: for a position it can reach, only 7-37 percent of
-pitch angles are achievable. If hand tilt sets the pitch, most frames have no IK
-solution and the arm stutters between solved and unsolvable. Position-only
-first; turn `follow_orientation` on once motion is proven in sim.
+"close the jaw" -- you could never approach an object with the gripper open. A
+held key also cannot false-trigger the way a threshold can, which makes it a
+deadman rather than a preference. It is simpler, too: a boolean cannot chatter,
+so the hysteresis band is gone.
 
 WHICH SCREEN AXIS DRIVES WHICH WORLD AXIS
------------------------------------------
 `image_position` returns (screen-x, screen-y, depth). The arm's world frame is
-(x = reach, radially out from the base; y = lateral; z = up). Those are NOT the
-same triple in the same order, and an earlier version added them element-wise
-by index, which silently produced:
+(x = reach, y = lateral, z = up). NOT the same triple in the same order --
+adding them element-wise sent left/right into reach, where it ran out against
+the workspace, and live that read as "the arm doesn't move left or right".
 
-    palm RIGHT  -> tool +5.0 cm of REACH      (should be lateral)
-    palm UP     -> tool -3.8 cm of LATERAL    (should be up)
-    palm CLOSER -> -2.4 reach, -6.0 lateral, -4.0 up, all at once
+`axis_map` states the correspondence as one matrix, so the thing that was wrong
+cannot go wrong silently again:
 
-Live, that read as "the gripper follows my pinch, depth sort of works backwards,
-and left/right does nothing at all" -- because left/right was being spent on
-reach, which runs out against the workspace almost immediately.
-
-`axis_map` states the correspondence explicitly instead of relying on index
-coincidence:
-
-    world x (reach)   <-  -depth_scale  * depth      toward the camera = extend
+    world x (reach)   <-  -depth_gain   * depth      nearer camera = extend
     world y (lateral) <-  +lateral_gain * screen-x
     world z (up)      <-  -lateral_gain * screen-y   image y grows DOWNWARD
 
 Every sign is configurable, because which lateral direction is "right" depends
-on where the arm is standing relative to the operator, and that is a fact about
-the room rather than about the code.
+on where the arm stands relative to the operator -- a fact about the room.
+
+WHY ORIENTATION IS OFF BY DEFAULT
+Only 7-37 percent of pitches are reachable at a given position. If hand tilt
+sets the pitch, most frames have no solution and the arm stutters.
 
 WHY DEPTH GETS A SMALLER GAIN
-`image_position` is `(cx/s, cy*a/s, 1/s)`. Differentiating, lateral error goes
-as `dcx/s` but depth error goes as `ds/s**2` -- `s` SQUARED. With `s ~ 0.155`
-that is a ~6.5x penalty, and measured end to end:
+Lateral error goes as `dcx/s`, depth as `ds/s**2` -- `s` SQUARED. Depth carries
+7-25x the noise for the same information, so it gets less authority.
 
-    camera noise sigma    lateral      depth        ratio
-    0.5 levels            0.142 mm     1.041 mm      7.3x
-    1.0 levels            0.226 mm     2.331 mm     10.3x
-    2.0 levels            0.432 mm    10.822 mm     25.0x
-
-Through the IK that becomes roughly 0.6 deg of joint motion per mm of tool
-error. Depth carries an order of magnitude more noise for the same information,
-so it gets proportionally less authority.
+Figures: docs/measurements/phase-2-handframe.md, phase-6-live.md
 """
 
 from __future__ import annotations
