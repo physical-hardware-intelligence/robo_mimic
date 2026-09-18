@@ -13,10 +13,10 @@ from hypothesis import strategies as st
 
 from robo_mimic.kinematics.limits import GRIPPER_RAD, JOINTS, LIMITS_DEG
 from robo_mimic.safety import (
-    TargetSmoother,
     OneEuroFilter,
     SafetyConfig,
     SafetyLimiter,
+    TargetSmoother,
     all_in_limits,
     gripper_command_rad,
     velocity_of,
