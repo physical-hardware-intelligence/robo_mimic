@@ -66,8 +66,28 @@ class RetargetConfig:
     #: Same for DEPTH. Deliberately smaller -- see the module docstring.
     depth_scale_m_per_span: float = 0.035
     #: Pinch ratio (thumb-index gap over palm span) meaning a closed jaw.
-    pinch_closed: float = 0.15
+    #: CALIBRATED 2026-09-17 against a real operator: a full pinch reads
+    #: 0.15 +-0.05 and a spread hand 0.90 +-0.05. These thresholds sit INSIDE
+    #: that range, with a margin -- see `pinch_open`.
+    pinch_closed: float = 0.25
     #: And a fully open jaw. Must exceed `pinch_closed`.
+    #:
+    #: WHY INSIDE THE MEASURED RANGE, WITH MARGIN
+    #: Three placements were considered against the operator's 0.15/0.90 +-0.05:
+    #:
+    #:   0.15 / 0.90   AT the edges. A loose pinch (0.20) leaves the jaw 7
+    #:                 percent open and a low open (0.85) reaches only 93
+    #:                 percent -- both extremes unreachable half the time.
+    #:   0.20 / 0.85   AT the tolerance limits. Saturates, but the operator's
+    #:                 loose pinch lands EXACTLY on the threshold: measured, a
+    #:                 single float ulp (4.27e-17) decided whether the jaw shut.
+    #:   0.25 / 0.80   one full tolerance-width of margin beyond the worst case.
+    #:                 Chosen.
+    #:
+    #: The usable band narrows to 0.55 of ratio, about 73 percent of the
+    #: operator's 0.75 of travel, with the rest as end deadband. That is the
+    #: right trade: reliable full-close IS the grip, and a jaw 7 percent open
+    #: when you believe you have gripped drops the object.
     pinch_open: float = 0.80
     #: Hold the last command this long through a tracking dropout.
     lost_grace_ms: int = 200

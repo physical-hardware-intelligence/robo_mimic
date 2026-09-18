@@ -83,3 +83,26 @@ Plus `depth_scale_m_per_span = 0.035` against `scale_m_per_span = 0.10`.
 ## Open
 
 **The viewer's SPACE is a toggle, not a held key.** OpenCV cannot detect key-hold: macOS sends one keydown, ~500 ms of nothing, then repeats. `Retargeter.step` takes `engage` as a plain boolean so the source can change without touching the logic. **Phase 7 needs a real momentary switch** — footswitch or gamepad trigger.
+
+
+---
+
+## Addendum: jaw thresholds calibrated on a real operator (2026-09-17)
+
+Measured: a **full pinch reads 0.15 ±0.05**, a **spread hand 0.90 ±0.05**.
+
+Three placements considered:
+
+| thresholds | outcome |
+|---|---|
+| **0.15 / 0.90** — at the edges | a loose pinch (0.20) leaves the jaw **7% open**; a low open (0.85) reaches only **93%**. Both extremes unreachable half the time |
+| **0.20 / 0.85** — at the tolerance limits | saturates, but the loose pinch lands **exactly on** the threshold. Measured: a single float ulp (**4.27e-17**) decided whether the jaw shut |
+| **0.25 / 0.80** — one tolerance-width of margin | **chosen** |
+
+The usable band narrows to 0.55 of ratio — about **73%** of the operator's 0.75 of travel — with the rest as end deadband.
+
+**Why that trade is right:** reliable full-close *is* the grip. A jaw 7% open when you believe you have gripped drops the object. Proportional control in the middle is a bonus; saturation at the ends is the requirement.
+
+> Postscript worth keeping: the test asserting this margin *itself* failed on
+> `0.85 − 0.80 == 0.04999999999999993`. The same floating-point boundary problem
+> that motivated the margin, one level up.

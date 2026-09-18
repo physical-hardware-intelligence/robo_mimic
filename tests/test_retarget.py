@@ -22,8 +22,13 @@ CONFIG = RetargetConfig(
     scale_m_per_span=0.10, depth_scale_m_per_span=0.035, lost_grace_ms=200
 )
 
-MID = 0.475  # midway between pinch_closed and pinch_open -> jaw half open
+MID = 0.525  # (0.25+0.80)/2 -- midway between pinch_closed and pinch_open -> jaw half open
 WIDE = 0.95  # above pinch_open -> jaw fully open
+
+#: Measured on a real operator, 2026-09-17: full pinch 0.15 +-0.05, spread hand
+#: 0.90 +-0.05. The defaults must saturate the jaw across this WHOLE spread.
+OPERATOR_PINCH = (0.10, 0.15, 0.20)
+OPERATOR_OPEN = (0.85, 0.90, 0.95)
 
 
 def hand(ratio: float = WIDE, **kwargs: object) -> object:
@@ -144,9 +149,9 @@ def test_a_key_is_binary_so_there_is_no_chatter() -> None:
     ("ratio", "expected"),
     [
         (0.00, 0.0),  # thumb on index
-        (0.15, 0.0),  # exactly at pinch_closed
+        (0.25, 0.0),  # exactly at pinch_closed
         (0.10, 0.0),  # below it -> clamped
-        (0.475, 0.5),  # midway
+        (0.525, 0.5),  # midway
         (0.80, 1.0),  # exactly at pinch_open
         (1.50, 1.0),  # beyond -> clamped
     ],
@@ -161,7 +166,7 @@ def test_jaw_tracks_the_hand_continuously_not_as_a_switch() -> None:
     """The students' demo showed State 0.09 / 0.68 / 1.00. Proportional, not binary."""
     retargeter = Retargeter(CONFIG)
     openings = []
-    for ratio in np.linspace(0.15, 0.80, 14):
+    for ratio in np.linspace(0.25, 0.80, 14):
         command = retargeter.step(hand(ratio=float(ratio)), HOME, 0, engage=True)  # type: ignore[arg-type]
         assert command.gripper is not None
         openings.append(command.gripper)
@@ -337,3 +342,43 @@ def test_jaw_is_always_a_legal_opening(ratio: float) -> None:
     assert command.gripper is not None
     assert 0.0 <= command.gripper <= 1.0
     assert GRIPPER_RAD[0] <= gripper_rad(command.gripper) <= GRIPPER_RAD[1]
+
+
+# --- calibration against a real operator ---------------------------------------
+@pytest.mark.parametrize("ratio", OPERATOR_PINCH)
+def test_the_operators_whole_pinch_spread_fully_closes_the_jaw(ratio: float) -> None:
+    """Measured 2026-09-17: a full pinch reads 0.15 +-0.05.
+
+    Every value in that spread must give jaw = 0 exactly. If the thresholds sat
+    at the measured edges instead of inside them, a loose pinch at 0.20 would
+    leave the jaw 7 percent open -- enough to drop what you thought you gripped.
+    """
+    command = Retargeter(RetargetConfig()).step(hand(ratio=ratio), HOME, 0, engage=True)  # type: ignore[arg-type]
+    assert command.gripper == 0.0
+
+
+@pytest.mark.parametrize("ratio", OPERATOR_OPEN)
+def test_the_operators_whole_open_spread_fully_opens_the_jaw(ratio: float) -> None:
+    """Measured 2026-09-17: a spread hand reads 0.90 +-0.05 -> jaw = 1 exactly."""
+    command = Retargeter(RetargetConfig()).step(hand(ratio=ratio), HOME, 0, engage=True)  # type: ignore[arg-type]
+    assert command.gripper == 1.0
+
+
+def test_the_thresholds_clear_the_operators_tolerance_with_margin() -> None:
+    """The invariant behind the calibration, stated so it cannot silently drift.
+
+    Strict inequalities matter. At 0.20/0.85 the operator's loose pinch sat
+    exactly ON the threshold and a float ulp decided whether the jaw shut.
+    """
+    config = RetargetConfig()
+    assert max(OPERATOR_PINCH) < config.pinch_closed, "loose pinch must be strictly inside"
+    assert config.pinch_open < min(OPERATOR_OPEN), "low open must be strictly inside"
+    margin = min(
+        config.pinch_closed - max(OPERATOR_PINCH), min(OPERATOR_OPEN) - config.pinch_open
+    )
+    # 0.05 is a nominal design margin, not an exact quantity, so compare with
+    # slack. Asserting `>= 0.05` exactly failed on 0.85 - 0.80 == 0.04999999999999993
+    # -- the very floating-point boundary problem that motivated this margin.
+    assert margin == pytest.approx(0.05, abs=1e-9) or margin > 0.05, (
+        f"want ~one tolerance-width of margin, got {margin:.4f}"
+    )
