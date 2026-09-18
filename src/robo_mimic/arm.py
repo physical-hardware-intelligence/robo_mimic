@@ -47,6 +47,54 @@ MIN_VOLTS = 6.0
 MAX_TEMP_C = 55
 
 
+#: Where to start a teleop session, and why not the pose the arm rests in.
+#:
+#: The arm's own gravity rest -- folded, jaw down -- is the obvious choice and
+#: it is the wrong one. Measured against it (2026-09-18):
+#:
+#:   pose                     reach   height   manipulability   limit margin
+#:   gravity rest, jaw down   14.4    -1.4 cm    1.51e-08         -4.0 deg
+#:   READY (this)             26.3   +12.0 cm    3.07e-08        +36.8 deg
+#:
+#: Three disqualifications, not one. It sits **4 deg outside** our shoulder_lift
+#: limit, so we cannot even command it. Its tool is **below the shoulder**, so
+#: there is nowhere to reach down to -- and reaching down is most of what a
+#: teleoperated arm does. And it has the **lowest manipulability** of anything
+#: measured, because a folded arm is near the edge of its workspace where hand
+#: motion buys little arm motion.
+#:
+#: READY is mid-range on every joint: 36.8 deg of limit margin, twice the
+#: manipulability, and 12 cm of height to descend through. It is deliberately
+#: NOT the most manipulable pose available (the old sim start scored 4.82e-08)
+#: because that one holds the arm high and extended, which is a longer fall if
+#: torque ever drops.
+#:
+#: The arm cannot reach this pose by itself from limp, and cannot hold it
+#: without torque, so `arm.py serve --start ready` drives it there on the way
+#: in and returns it to the folded rest on the way out.
+READY: dict[str, float] = {
+    "shoulder_pan": 0.0,
+    "shoulder_lift": -60.0,
+    "elbow_flex": 60.0,
+    "wrist_flex": 30.0,
+    "wrist_roll": 0.0,
+}
+
+
+#: Our arm's own gravity rest, clamped into limits. The one pose it holds with
+#: NO torque, which is what makes it the only safe place to end a session.
+#: Measured by letting it go limp and reading back: shoulder_lift sags to
+#: -104.04, which is 4 deg outside our envelope, so we park 4 deg above it and
+#: accept that cutting torque drops it those last 4 deg.
+FOLDED: dict[str, float] = {
+    "shoulder_pan": 0.0,
+    "shoulder_lift": -100.0,
+    "elbow_flex": 96.0,
+    "wrist_flex": 77.0,
+    "wrist_roll": 0.0,
+}
+
+
 @dataclass(frozen=True)
 class JointReport:
     """One joint's answer to "can we safely command this?"."""

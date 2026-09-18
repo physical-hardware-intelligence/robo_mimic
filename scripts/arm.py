@@ -37,9 +37,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from robo_mimic.arm import (  # noqa: E402
+    FOLDED,
     GRIPPER,
     MAX_TEMP_C,
     MIN_VOLTS,
+    READY,
     check_calibration,
     entry_pose,
     report_pose,
@@ -187,8 +189,22 @@ class Arm:
         self.bus = bus
         self.dt = 1.0 / rate_hz
         self.speed = speed_deg_s
-        self.home = self.present()          # exactly where we found it
         self.limp_now = False
+
+        # Where to leave the arm, and it is NOT always where we found it.
+        #
+        # Park ends in torque off, so the parking pose must be one the arm can
+        # hold with NO torque at all. If we found it limp, then wherever it was
+        # sagging is by definition such a pose. If we found it ENERGISED -- a
+        # previous session left torque on, which happens -- it may be holding
+        # itself somewhere it cannot hold itself, and returning there before
+        # cutting torque would drop it from height. Fold it down instead.
+        found_energised = any(self.bus.sync_read("Torque_Enable", normalize=False).values())
+        self.home = self.present()
+        if found_energised:
+            self.home = {**self.home, **FOLDED}
+            print(f"  {DIM}found energised, so parking will FOLD it rather than "
+                  f"return it to a pose it may not hold unpowered{OFF}")
 
     def present(self) -> dict[str, float]:
         return dict(self.bus.sync_read("Present_Position"))
@@ -291,10 +307,28 @@ def _keys():
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
 
 
+def _park_on_sigterm() -> None:
+    """Make SIGTERM take the same exit as ctrl-c.
+
+    Default SIGTERM kills the process outright: torque stays on, the arm holds
+    a pose nobody is commanding, and the next session finds a stale goal. A
+    `pkill` did exactly that here and left the arm energised for ten minutes.
+    Raising KeyboardInterrupt routes it through the normal park.
+    """
+    import signal
+
+    def handler(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, handler)
+    signal.signal(signal.SIGHUP, handler)
+
+
 def _energised_session(args: argparse.Namespace, body: Callable[[Arm], int]) -> int:
     """Shared bring-up: re-run the gate, energise, run `body`, always park."""
     if cmd_check(argparse.Namespace(**{**vars(args), "max_stale": 5.0, "max_entry": 10.0})) != 0:
         return 1
+    _park_on_sigterm()
     bus, _ = open_bus(args.port, args.calibration)
     arm = Arm(bus, speed_deg_s=args.speed)
     try:
@@ -363,24 +397,56 @@ def cmd_serve(args: argparse.Namespace) -> int:
     whatever rate it manages, this runs at `--rate` and interpolates toward the
     newest one. Nothing about the arm's motion is paced by the camera.
     """
-    from robo_mimic.link import STALE_MS, Receiver
+    from robo_mimic.link import STALE_MS, Receiver, ReportSender
 
     def body(arm: Arm) -> int:
-        receiver = Receiver(port=args.port_udp)
-        print(f"  listening on udp {args.port_udp}, {args.rate:.0f} Hz control loop")
+        try:
+            receiver = Receiver(port=args.port_udp)
+        except OSError as error:
+            raise SystemExit(
+                f"\n  cannot bind udp {args.port_udp}: {error}\n"
+                f"  Another `arm.py serve` is almost certainly still running.\n"
+                f"  Find it with:  pkill -INT -f 'arm.py serve'   (INT so it parks)\n"
+            ) from error
+        reporter = ReportSender(port=args.report_port)
+        print(f"  listening on udp {args.port_udp}, reporting pose on {args.report_port}")
+        print(f"  {args.rate:.0f} Hz control loop, {args.speed:.0f} deg/s ceiling")
         print(f"  {DIM}silence for {STALE_MS:.0f} ms freezes the arm. ctrl-c parks it.{OFF}\n")
         dt = 1.0 / args.rate
         step_ceiling = args.speed * dt  # degrees per tick, the hard rate limit
+
+        # The setpoint we RAMP, distinct from where the arm actually is.
+        #
+        # Ramping from Present_Position instead looks equivalent and is not. A
+        # servo under gravity needs a STANDING position error to hold at all --
+        # measured 2.79 deg on the elbow with lerobot's P=16, I=0. Commanding
+        # `present + 0.5` hands it 18% of the error it needs merely to stay put,
+        # so a loaded joint sags while you believe you are raising it, and the
+        # setpoint can never get ahead of actual. Exactly the phase-5
+        # `advance()` bug (docs/measurements/phase-5-sim.md), reintroduced on
+        # hardware, where it costs more.
+        if args.start == "ready":
+            # The arm cannot reach this by itself from limp and cannot hold it
+            # without torque, so getting there is our job, and putting it back
+            # is too -- `park` returns to the folded pose we found it in.
+            arm.glide(READY, "moving to the READY pose")
+        setpoint = {n: arm.present()[n] for n in JOINTS}
+
         last_seen = time.monotonic()
         holding = True
+        seen_sequence = -1
         ticks = frozen = 0
         try:
             while True:
                 tick = time.monotonic()
                 target = receiver.drain()
-                if target is not None and target.sequence != getattr(body, "_seen", None):
-                    body._seen = target.sequence  # type: ignore[attr-defined]
+                if target is not None and target.sequence != seen_sequence:
+                    seen_sequence = target.sequence
                     last_seen = tick
+
+                present = arm.present()
+                reporter.send({n: present[n] for n in JOINTS},
+                              present[GRIPPER] / 100.0)
 
                 age_ms = (tick - last_seen) * 1000.0
                 live = target is not None and age_ms <= STALE_MS and target.engaged
@@ -388,21 +454,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
                     if not holding:
                         arm.freeze()
                         holding = True
+                    # Re-seed, so resuming ramps from where it actually stopped
+                    # rather than from a setpoint that kept running while frozen.
+                    setpoint = {n: present[n] for n in JOINTS}
                     frozen += 1
                 else:
                     holding = False
-                    now = arm.present()
                     goal = {}
                     for name in JOINTS:
-                        delta = target.joints[name] - now[name]
+                        delta = target.joints[name] - setpoint[name]
                         capped = max(-step_ceiling, min(step_ceiling, delta))
-                        goal[name] = clamp_deg(name, now[name] + capped)
+                        setpoint[name] = clamp_deg(name, setpoint[name] + capped)
+                        goal[name] = setpoint[name]
                     goal[GRIPPER] = min(100.0, max(0.0, target.gripper * 100.0))
                     arm.bus.sync_write("Goal_Position", goal)
 
                 ticks += 1
                 if ticks % int(args.rate) == 0:
-                    state = "HOLD" if not live else "live"
+                    state = "live" if live else "HOLD"
                     print(f"\r  {state}  rx {receiver.received:6d}  "
                           f"stale {age_ms:6.0f} ms  frozen {frozen * dt:5.1f} s ",
                           end="", flush=True)
@@ -471,6 +540,10 @@ def main() -> int:
     srv.add_argument("--rate", type=float, default=50.0, help="control loop Hz")
     srv.add_argument("--speed", type=float, default=30.0, help="deg/s ceiling per joint")
     srv.add_argument("--port-udp", type=int, default=47101)
+    srv.add_argument("--report-port", type=int, default=47102)
+    srv.add_argument("--start", choices=("ready", "asis"), default="ready",
+                     help="'ready' drives to the mid-range teleop pose first "
+                          "(recommended); 'asis' begins wherever the arm sits")
     srv.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()

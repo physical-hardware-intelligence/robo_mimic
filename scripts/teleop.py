@@ -270,6 +270,8 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     parser.add_argument("--arm", action="store_true",
                         help="ALSO drive the real SO-101, via `arm.py serve`")
     parser.add_argument("--arm-port", type=int, default=47101)
+    parser.add_argument("--report-port", type=int, default=47102)
+    parser.add_argument("--arm-timeout", type=float, default=10.0)
     parser.add_argument(
         "--render-every", type=int, default=2, metavar="N",
         help="redraw the sim view every Nth frame (physics always runs). Default 2: "
@@ -304,14 +306,32 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     retargeter = Retargeter(RetargetConfig(aspect=aspect))
     limiter = SafetyLimiter(SafetyConfig())
     sender = None
+    start = dict(START)
     if args.arm:
-        from robo_mimic.link import Sender
-        sender = Sender(port=args.arm_port)
-        print(f"sending joint targets to udp {args.arm_port}. "
-              f"Start `arm.py serve` in the phi env, or nothing will listen.")
+        from robo_mimic.link import ReportReceiver, Sender
 
-    limiter.reset(START)
-    arm = SimArm(SCENE, interpolate=True, start=START)
+        # Anchor to the ARM, not to a guess. Position is incremental
+        # (ADR-002), so the starting pose IS the frame: seeded from the sim's
+        # home instead, our arm was 102 deg away on one joint and 28.7 cm away
+        # at the tool, and the operator's hand moved nothing visible while it
+        # crawled there. Refusing to start is the only honest option -- a
+        # silent fallback to START is precisely the bug.
+        reports = ReportReceiver(port=args.report_port)
+        print(f"waiting for the arm on udp {args.report_port} ...")
+        report = reports.wait(timeout_s=args.arm_timeout)
+        if report is None:
+            print(f"\nno pose from the arm after {args.arm_timeout:.0f} s. Start it first:\n"
+                  f"  ~/miniforge3/envs/phi/bin/python scripts/arm.py serve\n"
+                  f"Refusing to run unanchored: every command would be relative to a\n"
+                  f"pose the arm is not in.\n", file=sys.stderr)
+            return 1
+        start = report.joints
+        print("anchored to the arm: "
+              + "  ".join(f"{n.split('_')[0]} {v:+.1f}" for n, v in start.items()))
+        sender = Sender(port=args.arm_port)
+
+    limiter.reset(start)
+    arm = SimArm(SCENE, interpolate=True, start=start)
     renderer = arm.renderer()
 
     budget = Budget(STAGES)

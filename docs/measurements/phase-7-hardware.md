@@ -129,6 +129,89 @@ servo; the real one sags under its own weight. No amount of better perception
 closes it — it is a control problem, and an integral term or gravity
 compensation is where the 16 mm goes.
 
+## Two bugs the first live session found
+
+Reported: *"gripper opens and closes, but the arm does not move left or right."*
+The gripper working while the arm did not is the whole clue -- openness is
+absolute and pose-independent, the body joints are not.
+
+### 1. Perception was anchored to the sim, not to the arm
+
+`teleop.py` did `limiter.reset(START)` against a hardcoded sim home. Position
+is incremental (ADR-002), so **the starting pose IS the frame**:
+
+| joint | sim START | real rest | gap |
+|---|---|---|---|
+| shoulder_lift | −40.00 | −104.04 | **+64.04** |
+| wrist_flex | −25.00 | +77.01 | **−102.01** |
+| wrist_roll | 0.00 | −71.78 | +71.78 |
+
+**Tool frames 28.7 cm apart.** The arm spent the session crawling toward a pose
+nobody asked for while a few degrees of hand-driven pan were lost in the noise.
+
+Fixed with a reverse channel: `serve` reports `Present_Position` on udp 47102,
+and teleop seeds the limiter and the sim from it. If no report arrives it
+**refuses to start** -- silently falling back to `START` is the bug itself.
+
+### 2. The rate limiter ramped from measured position, not from a setpoint
+
+```python
+goal = present + clamp(target - present, ±step)      # wrong
+```
+
+A servo under gravity needs a **standing** position error to hold at all: 2.79°
+on the elbow. Commanding `present + 0.5°` hands it 18% of the error it needs
+merely to stay put, so a loaded joint sags while you believe you are raising
+it, and the setpoint can never get ahead of actual. Now an internal setpoint is
+ramped and written, re-seeded from actual whenever the arm freezes.
+
+This is the phase-5 `advance()` bug (see [phase-5](phase-5-sim.md)) reproduced
+on hardware, where it costs more. **Fixing a bug in sim does not fix it in the
+next implementation of the same idea.**
+
+### Verified after the fix
+
+| commanded | reached | error |
+|---|---|---|
+| shoulder_pan −40° | −39.6° | +0.4° |
+| shoulder_pan +40° | +39.9° | −0.1° |
+| shoulder_pan 0° | +0.5° | +0.5° |
+
+80° of travel tracked to under half a degree. The elbow settled 3.0° below its
+commanded 60°, independently reproducing the 2.79° sag measured by jogging.
+
+## Where to start a session, and why not where it rests
+
+The arm's own gravity rest -- folded, jaw down -- is the obvious start and is
+disqualified three times over:
+
+| pose | reach | height | manipulability | limit margin |
+|---|---|---|---|---|
+| gravity rest, jaw down | 14.4 cm | **−1.4 cm** | **1.51e-08** | **−4.0°** |
+| **READY** | 26.3 cm | +12.0 cm | 3.07e-08 | +36.8° |
+| old sim START | 31.2 cm | +22.0 cm | 4.82e-08 | +41.8° |
+
+It sits **4° outside** our shoulder_lift limit, so we cannot command it. Its
+tool is **below the shoulder**, so there is nowhere to reach down to, and
+reaching down is most of teleoperation. And it has the **lowest manipulability
+measured**, because a folded arm sits near its workspace edge where hand motion
+buys little arm motion.
+
+`READY` is mid-range everywhere: twice the manipulability and 12 cm of descent.
+It is deliberately **not** the most manipulable pose available -- the old sim
+start scored higher but holds the arm high and extended, a longer fall if
+torque drops.
+
+The arm can neither reach READY from limp nor hold it unpowered, so
+`serve --start ready` drives it there and returns it to the folded rest on exit.
+
+> **Park must end at a pose the arm can hold with no torque.** Returning to
+> "where I found it" is only safe if it was found limp. Found energised, it may
+> be holding a pose it cannot hold unpowered, and cutting torque drops it.
+> `Arm` now checks `Torque_Enable` at startup and folds down instead.
+
+Also: SIGTERM now parks. A `pkill` left the arm energised for ten minutes.
+
 ## Contradiction to resolve
 
 The wiki's sim-to-real note says *"1.75× stronger than our 7.4 V arm
