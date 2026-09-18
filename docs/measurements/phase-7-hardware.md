@@ -212,6 +212,72 @@ The arm can neither reach READY from limp nor hold it unpowered, so
 
 Also: SIGTERM now parks. A `pkill` left the arm energised for ten minutes.
 
+## Smoothness: the filter was in the wrong space
+
+Reported: *"it is mirroring instead of mimicking"*, and *"pick and place jitters
+and makes the robot unpredictable"*. Two unrelated causes.
+
+### Mirror vs mimic is a convention, not a bug
+
+The preview is flipped so your hand reads as a reflection -- the usual webcam
+courtesy, and right for watching your own hand. That flip was then inherited by
+the arm, which is a separate question and was never decided deliberately.
+Facing the arm, your left should move the tool to YOUR left. Default is now
+**mimic**; `teleop --mirror` restores the reflection, which is correct if you
+stand BEHIND the arm facing the way it faces.
+
+Unlike vertical (image y grows downward) and depth (the 1/span proxy shrinks
+with proximity), the lateral sign is **not** determined by physics, so the
+tests now read it from the config and pin the convention separately.
+
+### The filter was smoothing joints, after IK had already jumped
+
+`safety.py` filters joint angles. But IK is sharply nonlinear: a centimetre of
+depth noise near a workspace edge lands on a different pitch, tens of degrees
+away, and the joint filter then faithfully smooths its way toward a pose nobody
+wanted. **Smoothing after the nonlinearity cannot undo it.**
+
+Simulated pick -- descend 12 cm, dwell, lift -- at 20 Hz with this project's
+measured perception noise (1.5 mm lateral, 15 mm depth, depth being 7-25x worse
+because the proxy divides by span SQUARED):
+
+| configuration | jumps >15° | worst step | pitch shifts | lag |
+|---|---|---|---|---|
+| joint filter only | 30.4 | **62.30°** | 2.0 | 12.0 mm |
+| + Cartesian fc=2.0 | 0.8 | 15.32° | 0 | 7.1 mm |
+| + Cartesian fc=1.0 | **0** | 9.22° | 0 | 8.8 mm |
+| + Cartesian fc=1.0, depth ×0.4 | **0** | **5.34°** | 0 | **7.6 mm** |
+| + Cartesian fc=0.5, depth ×0.4 | 0 | 4.41° | 0 | 13.2 mm |
+
+**11.7× smoother and more accurate at the same time.** Lag falling looks wrong
+for a filter until you notice the noise was itself most of the tracking error.
+fc=0.5 is smoother still and pays for it in lag; 1.0 is the knee.
+
+### What the whole pipeline was actually doing
+
+With the joint filter and rate limiter downstream, over the same pick:
+
+| | before | after |
+|---|---|---|
+| frames pinned at the 120 °/s cap | **51.9%** | 3.4% |
+| frames dropped by the glitch guard | 40.4 | **0** |
+| tracking lag | 31.8 mm | **10.1 mm** |
+| tool jitter | 13.71 mm/frame | **4.43 mm/frame** |
+
+The arm spent **more than half of every session at its velocity limit**,
+chasing a target that kept teleporting, while the glitch guard discarded 8% of
+frames outright. It was never tracking the hand; it was permanently catching
+up. That is the whole of "jittery and unpredictable".
+
+> The velocity cap and the glitch guard are safety features and both were
+> working. Saturating them continuously is not a safety event, so nothing
+> complained -- the readout said "limited", which is what it is for. Worth
+> surfacing saturation as a warning, not just a state.
+
+Depth is de-rated to 0.4× (0.035 → 0.014 m/span) because it is both the
+noisiest axis and the direction the arm is worst conditioned in. The cost is
+honest: reaching forward now takes more hand travel.
+
 ## Contradiction to resolve
 
 The wiki's sim-to-real note says *"1.75× stronger than our 7.4 V arm

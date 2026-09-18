@@ -69,7 +69,14 @@ class RetargetConfig:
     #: Metres of tool motion per palm-span of LATERAL hand motion.
     scale_m_per_span: float = 0.10
     #: Same for DEPTH. Deliberately smaller -- see the module docstring.
-    depth_scale_m_per_span: float = 0.035
+    #: De-rated to 0.4x the 0.035 it had, because depth is the axis that makes
+    #: the arm unpredictable. The proxy divides by span SQUARED, so depth noise
+    #: measures 7-25x lateral, and reach is exactly the direction in which the
+    #: arm is worst conditioned. On a simulated pick this cut the worst joint
+    #: step from 9.22 to 5.34 deg on top of the Cartesian filter, and REDUCED
+    #: tracking lag (8.8 -> 7.6 mm) because the noise was much of the error.
+    #: The cost is honest: reaching forward now takes more hand travel.
+    depth_scale_m_per_span: float = 0.014
     #: Pinch ratio (thumb-index gap over palm span) meaning a closed jaw.
     #: CALIBRATED 2026-09-17 against a real operator: a full pinch reads
     #: 0.15 +-0.05 and a spread hand 0.90 +-0.05. These thresholds sit INSIDE
@@ -109,7 +116,14 @@ class RetargetConfig:
     #: Signs. `vertical` is negative because image y grows downward; `depth` is
     #: negative because the proxy is `1/span`, which SHRINKS as the hand nears
     #: the camera -- so a negative sign makes "hand toward camera" extend the arm.
-    lateral_sign: float = 1.0
+    #: MIMIC, not mirror. Facing the arm, your left should send the tool to
+    #: YOUR left. The preview is flipped so your hand looks like a reflection
+    #: (the usual webcam courtesy), and it is tempting to let the arm inherit
+    #: that flip -- but the preview is about watching your own hand, and this
+    #: is about where the metal goes. They are separate choices and were
+    #: wrongly coupled. `teleop --mirror` restores the reflected mapping, which
+    #: is the correct one if you stand BEHIND the arm facing the way it faces.
+    lateral_sign: float = -1.0
     vertical_sign: float = -1.0
     depth_sign: float = -1.0
 

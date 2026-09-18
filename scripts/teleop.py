@@ -77,7 +77,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from robo_mimic.landmarks import MIDDLE_MCP, PALM, WRIST, HandLandmarks, HandTracker  # noqa: E402
 from robo_mimic.project import project  # noqa: E402
 from robo_mimic.retarget import Command, RetargetConfig, Retargeter  # noqa: E402
-from robo_mimic.safety import SafetyConfig, SafetyLimiter  # noqa: E402
+from robo_mimic.safety import SafetyConfig, SafetyLimiter, TargetSmoother  # noqa: E402
 from robo_mimic.sim import SimArm  # noqa: E402
 from robo_mimic.timing import Budget  # noqa: E402
 from robo_mimic.types import Pose  # noqa: E402
@@ -272,6 +272,10 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     parser.add_argument("--arm-port", type=int, default=47101)
     parser.add_argument("--report-port", type=int, default=47102)
     parser.add_argument("--arm-timeout", type=float, default=10.0)
+    parser.add_argument("--mirror", action="store_true",
+                        help="reflect left/right. Correct when you stand BEHIND "
+                             "the arm facing the way it faces; the default MIMICS, "
+                             "which is what you want facing it")
     parser.add_argument(
         "--render-every", type=int, default=2, metavar="N",
         help="redraw the sim view every Nth frame (physics always runs). Default 2: "
@@ -303,8 +307,13 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         detector = HandTracker(MODEL, num_hands=1, mode="video")
 
     aspect = source.height / source.width
-    retargeter = Retargeter(RetargetConfig(aspect=aspect))
+    retargeter = Retargeter(RetargetConfig(
+        aspect=aspect,
+        lateral_sign=+1.0 if args.mirror else RetargetConfig.lateral_sign,
+    ))
     limiter = SafetyLimiter(SafetyConfig())
+    smoother = TargetSmoother()
+    was_engaged = False
     sender = None
     start = dict(START)
     if args.arm:
@@ -357,6 +366,10 @@ def main() -> int:  # noqa: PLR0912, PLR0915
                 rgb = np.ascontiguousarray(bgr[:, :, ::-1], dtype=np.uint8)
                 hand = detector.detect(rgb, int(time.perf_counter() * 1000)).best()
 
+        now = time.perf_counter()
+        dt = max(now - previous, 1e-4)
+        previous = now
+
         with budget.measure("retarget"):
             pose_now = arm.pose()
             command = retargeter.step(
@@ -367,12 +380,16 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         joints = gripper = None
         with budget.measure("project"):
             if command.target is not None:
-                joints = project(command.target, current=limiter.last).joints
+                # Smooth in METRES, before IK. Filtering joints afterwards
+                # cannot undo a branch or pitch jump the projection already
+                # made: measured 62 deg worst step without this, 5 deg with.
+                if engaged and not was_engaged:
+                    smoother.reset()   # the target jumps at every clutch engage
+                smoothed = smoother(command.target.position, dt)
+                target = Pose(smoothed, command.target.rotation)
+                joints = project(target, current=limiter.last).joints
                 gripper = command.gripper
 
-        now = time.perf_counter()
-        dt = max(now - previous, 1e-4)
-        previous = now
         with budget.measure("safety"):
             safe = limiter.step(joints, gripper, dt)
 
@@ -386,6 +403,8 @@ def main() -> int:  # noqa: PLR0912, PLR0915
             # camera loop. `engaged` rides along because the clutch belongs to
             # the operator, not to the process that happens to own the bus.
             sender.send(safe.joints, safe.gripper, engaged=engaged)
+
+        was_engaged = engaged
 
         with budget.measure("render"):
             if not args.bench:

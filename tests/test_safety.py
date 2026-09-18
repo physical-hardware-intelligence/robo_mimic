@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 
 from robo_mimic.kinematics.limits import GRIPPER_RAD, JOINTS, LIMITS_DEG
 from robo_mimic.safety import (
+    TargetSmoother,
     OneEuroFilter,
     SafetyConfig,
     SafetyLimiter,
@@ -366,3 +367,65 @@ def test_it_tracks_smooth_motion_and_holds_only_on_real_dropouts() -> None:
     assert worst <= CONFIG.max_velocity_deg_s * (1 + 1e-9)
     assert moved > 2500, f"only moved {moved}/3000"
     assert 40 < held < 200, f"held {held}/3000, expected around 90"
+
+
+class TestTargetSmoother:
+    """The Cartesian filter, which is the one that decides whether a pick works.
+
+    Filtering joints after the projection cannot help: IK is sharply
+    nonlinear, so a centimetre of depth noise near a workspace edge lands on a
+    different pitch and the joint filter then smoothly chases a pose nobody
+    wanted. Measured on a simulated pick: 62.30 deg worst joint step without
+    this, 5.34 deg with it (and with depth de-rated).
+    """
+
+    @staticmethod
+    def _noisy_line(n: int = 120, sigma: float = 0.015, seed: int = 0):
+        rng = np.random.default_rng(seed)
+        clean = np.stack([np.linspace(0.25, 0.30, n), np.zeros(n), np.full(n, 0.12)], 1)
+        return clean, clean + rng.normal(0, sigma, clean.shape)
+
+    def test_it_attenuates_noise_on_every_axis(self) -> None:
+        clean, noisy = self._noisy_line()
+        smoother = TargetSmoother()
+        out = np.array([smoother(p, 1 / 20) for p in noisy])
+        before = np.abs(np.diff(noisy, axis=0)).mean(0)
+        after = np.abs(np.diff(out, axis=0)).mean(0)
+        assert (after < before).all(), f"jitter grew on some axis: {before} -> {after}"
+
+    def test_it_does_not_trade_noise_for_lag(self) -> None:
+        """A filter that just adds delay is not an improvement. Against the
+        CLEAN path the smoothed signal must beat the noisy one outright."""
+        clean, noisy = self._noisy_line()
+        smoother = TargetSmoother()
+        out = np.array([smoother(p, 1 / 20) for p in noisy])
+        assert np.linalg.norm(out - clean, axis=1).mean() < np.linalg.norm(
+            noisy - clean, axis=1
+        ).mean()
+
+    def test_the_first_sample_passes_through_untouched(self) -> None:
+        """No startup transient: the arm must not lunge from an assumed origin."""
+        smoother = TargetSmoother()
+        first = np.array([0.25, 0.01, 0.12])
+        assert smoother(first, 1 / 20) == pytest.approx(first)
+
+    def test_reset_forgets_the_previous_hand_position(self) -> None:
+        """Re-engaging the clutch jumps the target to a new incremental origin.
+        Smearing across that would drag the arm toward where the hand WAS."""
+        smoother = TargetSmoother()
+        for _ in range(40):
+            smoother(np.array([0.25, 0.0, 0.12]), 1 / 20)
+        smoother.reset()
+        elsewhere = np.array([0.30, 0.08, 0.20])
+        assert smoother(elsewhere, 1 / 20) == pytest.approx(elsewhere)
+
+    def test_a_held_position_converges_rather_than_drifting(self) -> None:
+        held = np.array([0.26, 0.0, 0.12])
+        smoother = TargetSmoother()
+        out = [smoother(held, 1 / 20) for _ in range(60)]
+        assert out[-1] == pytest.approx(held, abs=1e-9)
+
+    def test_output_stays_finite_under_an_absurd_input(self) -> None:
+        smoother = TargetSmoother()
+        smoother(np.array([0.25, 0.0, 0.12]), 1 / 20)
+        assert np.isfinite(smoother(np.array([1e6, -1e6, 1e6]), 1 / 20)).all()

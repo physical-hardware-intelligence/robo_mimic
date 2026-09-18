@@ -235,7 +235,11 @@ def test_lateral_motion_uses_the_lateral_gain() -> None:
     assert command.target is not None
     delta = command.target.position - HOME.position
     # 0.2 of frame width at a 0.2 span = 1.0 palm-span, times 0.10 m.
-    assert delta[1] == pytest.approx(0.10, abs=1e-12)
+    # The MAGNITUDE is physics. The SIGN is a convention -- which way the arm
+    # should go for a given hand motion depends on where the operator stands
+    # relative to the base -- so it is read from the config rather than typed
+    # here, and pinned separately in TestLateralConvention below.
+    assert delta[1] == pytest.approx(0.10 * CONFIG.lateral_sign, abs=1e-12)
     assert abs(delta[0]) < 1e-12, "lateral motion must not become reach"
     assert abs(delta[2]) < 1e-12
 
@@ -436,8 +440,11 @@ def test_each_screen_axis_drives_the_right_world_axis() -> None:
 @pytest.mark.parametrize(
     ("label", "centre", "span", "axis", "sign"),
     [
-        ("palm right", (0.6, 0.5), 0.2, 1, +1),
-        ("palm left", (0.4, 0.5), 0.2, 1, -1),
+        # Lateral signs follow the configured convention (see the test below);
+        # vertical and depth are fixed by physics -- image y grows DOWNWARD,
+        # and the 1/span proxy SHRINKS as the hand approaches the camera.
+        ("palm right", (0.6, 0.5), 0.2, 1, int(RetargetConfig().lateral_sign)),
+        ("palm left", (0.4, 0.5), 0.2, 1, -int(RetargetConfig().lateral_sign)),
         ("palm up", (0.5, 0.4), 0.2, 2, +1),
         ("palm down", (0.5, 0.6), 0.2, 2, -1),
         ("palm closer", (0.5, 0.5), 0.3, 0, +1),
@@ -466,3 +473,46 @@ def test_hand_motion_moves_the_tool_on_exactly_one_axis(
 def test_axis_map_rejects_a_non_permutation() -> None:
     with pytest.raises(ValueError, match="permutation"):
         RetargetConfig(lateral_axis=1, vertical_axis=1, depth_axis=0)
+
+
+class TestLateralConvention:
+    """Which way the arm goes when your hand goes left.
+
+    Unlike vertical and depth, this is NOT determined by physics. The preview
+    is mirrored so your hand reads as a reflection, which is the right choice
+    for watching your own hand and the wrong one to propagate to the arm: the
+    two were coupled by accident. Facing the arm, your left should send the
+    tool to YOUR left (MIMIC). Standing behind it, facing the way it faces, the
+    reflected mapping (MIRROR) is the correct one instead.
+    """
+
+    @staticmethod
+    def _lateral(config: RetargetConfig) -> float:
+        retargeter = Retargeter(config)
+        retargeter.step(hand(image_centre=(0.5, 0.5)), HOME, 0, engage=True)  # type: ignore[arg-type]
+        command = retargeter.step(hand(image_centre=(0.7, 0.5)), HOME, 33, engage=True)  # type: ignore[arg-type]
+        assert command.target is not None
+        return float((command.target.position - HOME.position)[1])
+
+    def test_the_default_is_mimic_not_mirror(self) -> None:
+        """Reported live: 'it is mirroring instead of mimicking'."""
+        assert RetargetConfig().lateral_sign == -1.0
+
+    def test_mirror_and_mimic_are_exact_opposites(self) -> None:
+        mimic = self._lateral(RetargetConfig(lateral_sign=-1.0))
+        mirror = self._lateral(RetargetConfig(lateral_sign=+1.0))
+        assert mimic == pytest.approx(-mirror)
+        assert mimic != 0.0
+
+    def test_the_flip_touches_nothing_but_the_lateral_axis(self) -> None:
+        """Flipping the convention must not disturb reach or height."""
+        out = {}
+        for sign in (-1.0, +1.0):
+            r = Retargeter(RetargetConfig(lateral_sign=sign))
+            r.step(hand(image_centre=(0.5, 0.5)), HOME, 0, engage=True)  # type: ignore[arg-type]
+            c = r.step(hand(image_centre=(0.7, 0.4)), HOME, 33, engage=True)  # type: ignore[arg-type]
+            assert c.target is not None
+            out[sign] = c.target.position - HOME.position
+        assert out[-1.0][0] == pytest.approx(out[+1.0][0])   # reach untouched
+        assert out[-1.0][2] == pytest.approx(out[+1.0][2])   # height untouched
+        assert out[-1.0][1] == pytest.approx(-out[+1.0][1])  # lateral inverted
