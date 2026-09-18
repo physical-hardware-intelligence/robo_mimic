@@ -5,8 +5,7 @@
 Webcam hand-pose teleoperation for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100).
 One RGB camera. No depth sensor, no gloves, no markers.
 
-Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
-a student robotics SIG at Northeastern University's Silicon Valley campus.
+Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi).
 
 > **Phase 6 of 7.** Live hand → simulated arm. Hardware is next.
 > `make check` = **218 tests**, no camera required.
