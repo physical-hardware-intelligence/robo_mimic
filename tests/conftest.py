@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
 from typing import Any
 
@@ -10,13 +11,16 @@ import pytest
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 
-#: Where the phi repo lives, for the provenance tests. Absent on CI, and the
-#: tests that need it skip rather than fail -- provenance is verifiable at home,
-#: not a precondition for the suite.
-PHI_MODEL = pathlib.Path(
-    "/Volumes/Crucial_X9/Projects/phi/simulation/model/so101_new_calib.xml"
-)
-PHI_SIM = pathlib.Path("/Volumes/Crucial_X9/Projects/phi/simulation")
+#: Where the phi repo lives, for the `phi`-marked provenance tests -- the ones
+#: that import phi's own kinematics and demand bit-identical output from our
+#: vendored copy. Set `PHI_REPO` to point at a checkout; without it those tests
+#: skip rather than fail, because provenance is verifiable at home and is not a
+#: precondition for the suite.
+PHI_REPO = pathlib.Path(
+    os.environ.get("PHI_REPO", "/Volumes/Crucial_X9/Projects/phi")
+).expanduser()
+PHI_SIM = PHI_REPO / "simulation"
+PHI_MODEL = PHI_SIM / "model" / "so101_new_calib.xml"
 
 #: Fetched by `make assets`, never committed (7.8 MB model + a third-party image).
 MODEL = pathlib.Path(__file__).resolve().parent.parent / "assets" / "hand_landmarker.task"

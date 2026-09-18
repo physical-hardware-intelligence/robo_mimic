@@ -123,7 +123,8 @@ make cov       # coverage
 
 They are excluded from ruff and mypy deliberately — linting vendored code means
 editing it, and editing it makes the provenance a lie. A `phi`-marked test
-imports phi live and demands **bit-identical** output.
+imports phi live and demands **bit-identical** output; point `PHI_REPO` at a
+checkout to run it, or let it skip.
 
 `limits.py` is ours, because phi's hand-typed limit table disagrees with the
 model on three of five joints. `limits.py` is the single source of truth.
