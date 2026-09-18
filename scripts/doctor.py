@@ -170,6 +170,25 @@ def main() -> int:
                 f"{result.status}, {result.position_error_m * 1000:.3f} mm, "
                 f"{result.out_of_plane_deg:.1f} deg out of plane",
             )
+
+        # Phase 4: the guarantee.
+        from mirror.safety import SafetyLimiter, all_in_limits
+
+        limiter = SafetyLimiter()
+        legal = True
+        for bad in (None, dict.fromkeys(("shoulder_pan",), 0.0), {}):
+            legal &= all_in_limits(limiter.step(bad, 0.5, 1 / 31).joints)  # type: ignore[arg-type]
+        nan_joints = dict.fromkeys(result.joints, float("nan"))
+        legal &= all_in_limits(limiter.step(nan_joints, float("nan"), 1 / 31).joints)
+        start = dict(limiter.last)
+        far = limiter.step(dict.fromkeys(result.joints, 400.0), 1.0, 1 / 31)
+        step = max(abs(far.joints[j] - start[j]) for j in start)
+        capped = step <= 120.0 / 31 * 1.001
+        check(
+            "safety (limits + rate cap)",
+            legal and capped,
+            f"garbage held in-limits, worst step {step:.3f} deg <= {120.0 / 31:.3f}",
+        )
     except Exception as error:  # noqa: BLE001
         check("pipeline (fixture -> command)", False, f"{type(error).__name__}: {error}",
               "make check")

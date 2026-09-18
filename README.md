@@ -8,8 +8,9 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 3 complete.** The pipeline now runs end to end to joint angles.
-> `make check` = **162 tests, no camera required**. See [Phases](#phases).
+> **Status: Phase 4 (filter half) complete.** Perception → joints → a safety
+> envelope that no input can escape.
+> `make check` = **195 tests, no camera required**. See [Phases](#phases).
 
 ---
 
@@ -127,7 +128,7 @@ result you saw live is reproducible without you in front of the lens.
 ## Verify
 
 ```bash
-make check     # lint + strict mypy + 162 tests. No camera, no robot, no MuJoCo.
+make check     # lint + strict mypy + 195 tests. No camera, no robot, no MuJoCo.
 make test-all  # adds the 13 perception tests (needs mediapipe + make assets)
 make cov       # coverage
 ```
@@ -142,7 +143,7 @@ Each one exits on a **committed number**, not on "it works."
 | **1** ✅ | perception, offline | bit-identical landmarks, PNG-pinned; p90 **11.76 ms** (85 FPS). [measurements](docs/measurements/phase-1-perception.md) |
 | **2** ✅ | hand frame + retarget + **gripper** | orthonormal to **1e-16**; mirror test exact; all 10 clutch transitions; jaw clamped under fuzz. [measurements](docs/measurements/phase-2-handframe.md) |
 | 3 | the 5-DOF projection | residual proven to be a pure yaw rotation, 10k poses |
-| 4 | safety layer | 10k fuzz cases, zero escapes |
+| **4** ◐ | safety layer | **30 000 adversarial frames, 0 escapes**; velocity at the cap never over; filter beats raw in both regimes. [measurements](docs/measurements/phase-4-safety.md) · *fuzzed envelope done; hardware caps still unverified* |
 | 5 | sim in the loop | tracking-error table + a side-by-side clip |
 | 6 | live sim | per-stage latency budget, sustained FPS |
 | 7 | hardware | `Present_Position` read first, return-to-start on exit, e-stop tested before motion |
