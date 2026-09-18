@@ -1,6 +1,6 @@
 # Phase 3 — the projection, measured
 
-**Date**: 2026-09-17 · module `src/mirror/project.py` · 17 tests
+**Date**: 2026-09-17 · module `src/robo_mimic/project.py` · 17 tests
 
 The hole this fills: `retarget` emits a `Pose`, the IK wants `(position, pitch,
 roll)`, and **nothing joined them up**. The IK was vendored, verified to

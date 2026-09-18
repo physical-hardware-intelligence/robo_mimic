@@ -111,11 +111,11 @@ def main() -> int:
     try:
         import numpy as np
 
-        from mirror.handframe import hand_pose
-        from mirror.kinematics import gripper_rad
-        from mirror.landmarks import INDEX_TIP, THUMB_TIP, HandLandmarks
-        from mirror.retarget import Clutch, Retargeter
-        from mirror.types import Pose
+        from robo_mimic.handframe import hand_pose
+        from robo_mimic.kinematics import gripper_rad
+        from robo_mimic.landmarks import INDEX_TIP, THUMB_TIP, HandLandmarks
+        from robo_mimic.retarget import Clutch, Retargeter
+        from robo_mimic.types import Pose
 
         data = np.load(golden)
 
@@ -159,7 +159,7 @@ def main() -> int:
             check("gripper follows the pinch", False, "no jaw command while engaged")
 
         # Phase 3: the Pose -> joints link.
-        from mirror.project import project
+        from robo_mimic.project import project
 
         if wide.target is not None:
             result = project(wide.target)
@@ -172,7 +172,7 @@ def main() -> int:
             )
 
         # Phase 4: the guarantee.
-        from mirror.safety import SafetyLimiter, all_in_limits
+        from robo_mimic.safety import SafetyLimiter, all_in_limits
 
         limiter = SafetyLimiter()
         legal = True

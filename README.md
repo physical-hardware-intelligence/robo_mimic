@@ -1,4 +1,4 @@
-# mirror
+# robo_mimic
 
 **Your hand moves. The arm mirrors it.**
 

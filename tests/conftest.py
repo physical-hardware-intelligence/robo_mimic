@@ -50,9 +50,9 @@ def golden_hands(landmarks_golden: dict[str, Any]) -> list[Any]:
     """The golden fixture rehydrated into HandLandmarks objects.
 
     Imported here rather than at module scope so that collecting this file never
-    requires mediapipe -- mirror.landmarks imports it lazily, inside HandTracker.
+    requires mediapipe -- robo_mimic.landmarks imports it lazily, inside HandTracker.
     """
-    from mirror.landmarks import HandLandmarks
+    from robo_mimic.landmarks import HandLandmarks
 
     g = landmarks_golden
     return [

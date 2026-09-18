@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mirror.landmarks import (
+from robo_mimic.landmarks import (
     INDEX_MCP,
     INDEX_TIP,
     MIDDLE_MCP,

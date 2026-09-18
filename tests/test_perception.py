@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from mirror.landmarks import LANDMARK_NAMES, HandTracker, read_image_rgb
+from robo_mimic.landmarks import LANDMARK_NAMES, HandTracker, read_image_rgb
 
 from .conftest import MODEL, REFERENCE_PNG
 

@@ -8,7 +8,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.timing import Budget, Clock, StageStats
+from robo_mimic.timing import Budget, Clock, StageStats
 
 STAGES = ("capture", "detect", "solve")
 

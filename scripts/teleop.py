@@ -74,13 +74,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from mirror.landmarks import MIDDLE_MCP, PALM, WRIST, HandLandmarks, HandTracker  # noqa: E402
-from mirror.project import project  # noqa: E402
-from mirror.retarget import Command, RetargetConfig, Retargeter  # noqa: E402
-from mirror.safety import SafetyConfig, SafetyLimiter  # noqa: E402
-from mirror.sim import SimArm  # noqa: E402
-from mirror.timing import Budget  # noqa: E402
-from mirror.types import Pose  # noqa: E402
+from robo_mimic.landmarks import MIDDLE_MCP, PALM, WRIST, HandLandmarks, HandTracker  # noqa: E402
+from robo_mimic.project import project  # noqa: E402
+from robo_mimic.retarget import Command, RetargetConfig, Retargeter  # noqa: E402
+from robo_mimic.safety import SafetyConfig, SafetyLimiter  # noqa: E402
+from robo_mimic.sim import SimArm  # noqa: E402
+from robo_mimic.timing import Budget  # noqa: E402
+from robo_mimic.types import Pose  # noqa: E402
 
 MODEL = ROOT / "assets" / "hand_landmarker.task"
 SCENE = ROOT / "model" / "scene.xml"
@@ -368,7 +368,7 @@ def main() -> int:  # noqa: PLR0912, PLR0915
 
         import cv2
 
-        cv2.imshow("mirror -- hand | sim", frame)
+        cv2.imshow("robo_mimic -- hand | sim", frame)
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):
             break

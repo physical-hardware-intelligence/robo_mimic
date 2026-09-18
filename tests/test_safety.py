@@ -11,8 +11,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.kinematics.limits import GRIPPER_RAD, JOINTS, LIMITS_DEG
-from mirror.safety import (
+from robo_mimic.kinematics.limits import GRIPPER_RAD, JOINTS, LIMITS_DEG
+from robo_mimic.safety import (
     OneEuroFilter,
     SafetyConfig,
     SafetyLimiter,

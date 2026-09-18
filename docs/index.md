@@ -1,4 +1,4 @@
-# mirror docs
+# robo_mimic docs
 
 Three kinds of document, kept apart on purpose.
 
@@ -32,7 +32,7 @@ cite these; they do not restate them.
 ## Code — *the intuition needed to read it*
 
 Module docstrings carry the reasoning; they link here for the figures.
-Start with [`src/mirror/__init__.py`](../src/mirror/__init__.py) for the
+Start with [`src/robo_mimic/__init__.py`](../src/robo_mimic/__init__.py) for the
 pipeline, then follow it left to right.
 
 ---

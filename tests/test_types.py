@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.types import Pose
+from robo_mimic.types import Pose
 
 # --- strategies ------------------------------------------------------------
 finite = st.floats(min_value=-2.0, max_value=2.0, allow_nan=False, allow_infinity=False)

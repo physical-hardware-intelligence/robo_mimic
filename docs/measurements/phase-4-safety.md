@@ -1,6 +1,6 @@
 # Phase 4 (filter half) — the safety layer, measured
 
-**Date**: 2026-09-17 · module `src/mirror/safety.py` · 33 tests
+**Date**: 2026-09-17 · module `src/robo_mimic/safety.py` · 33 tests
 
 ## The contract
 

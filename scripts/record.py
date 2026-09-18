@@ -44,10 +44,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from mirror.handframe import DegenerateHandError, hand_pose  # noqa: E402
-from mirror.landmarks import HandTracker  # noqa: E402
-from mirror.retarget import Clutch, RetargetConfig, Retargeter  # noqa: E402
-from mirror.types import Pose  # noqa: E402
+from robo_mimic.handframe import DegenerateHandError, hand_pose  # noqa: E402
+from robo_mimic.landmarks import HandTracker  # noqa: E402
+from robo_mimic.retarget import Clutch, RetargetConfig, Retargeter  # noqa: E402
+from robo_mimic.types import Pose  # noqa: E402
 
 MODEL = ROOT / "assets" / "hand_landmarker.task"
 CLIPS = ROOT / "fixtures" / "clips"
@@ -261,7 +261,7 @@ def main() -> int:
                     break
                 continue
 
-            cv2.imshow("mirror", canvas)
+            cv2.imshow("robo_mimic", canvas)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break

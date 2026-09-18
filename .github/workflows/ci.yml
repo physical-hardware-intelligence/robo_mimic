@@ -16,7 +16,7 @@ jobs:
       - name: Types (strict)
         run: mypy src
       - name: Pure-math suite
-        run: pytest -m "not perception and not sim and not hardware" --cov=mirror --cov-report=term-missing
+        run: pytest -m "not perception and not sim and not hardware" --cov=robo_mimic --cov-report=term-missing
 
   perception:
     runs-on: ubuntu-latest

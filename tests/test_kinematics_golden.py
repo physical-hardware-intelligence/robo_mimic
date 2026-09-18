@@ -12,8 +12,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from mirror.kinematics.forward import get_forward_kinematics
-from mirror.kinematics.limits import JOINTS
+from robo_mimic.kinematics.forward import get_forward_kinematics
+from robo_mimic.kinematics.limits import JOINTS
 
 from .conftest import PHI_SIM
 

@@ -12,9 +12,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mirror.kinematics.forward import get_forward_kinematics
-from mirror.kinematics.inverse import inverse_kinematics, pick, tool_pitch, within_limits
-from mirror.kinematics.limits import JOINTS, LIMITS_DEG
+from robo_mimic.kinematics.forward import get_forward_kinematics
+from robo_mimic.kinematics.inverse import inverse_kinematics, pick, tool_pitch, within_limits
+from robo_mimic.kinematics.limits import JOINTS, LIMITS_DEG
 
 JOINT_TOL_DEG = 1e-9
 POSITION_TOL_M = 1e-13

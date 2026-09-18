@@ -8,9 +8,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mirror.kinematics import forward_kinematics
-from mirror.kinematics.limits import JOINTS
-from mirror.sim import MODEL_JOINTS, SimArm
+from robo_mimic.kinematics import forward_kinematics
+from robo_mimic.kinematics.limits import JOINTS
+from robo_mimic.sim import MODEL_JOINTS, SimArm
 
 from .conftest import SCENE
 

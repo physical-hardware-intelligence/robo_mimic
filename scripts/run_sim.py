@@ -32,12 +32,12 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from mirror.landmarks import MIDDLE_MCP, PALM, WRIST, HandLandmarks  # noqa: E402
-from mirror.project import project  # noqa: E402
-from mirror.retarget import Clutch, RetargetConfig, Retargeter  # noqa: E402
-from mirror.safety import SafetyConfig, SafetyLimiter  # noqa: E402
-from mirror.sim import SimArm  # noqa: E402
-from mirror.types import Pose  # noqa: E402
+from robo_mimic.landmarks import MIDDLE_MCP, PALM, WRIST, HandLandmarks  # noqa: E402
+from robo_mimic.project import project  # noqa: E402
+from robo_mimic.retarget import Clutch, RetargetConfig, Retargeter  # noqa: E402
+from robo_mimic.safety import SafetyConfig, SafetyLimiter  # noqa: E402
+from robo_mimic.sim import SimArm  # noqa: E402
+from robo_mimic.types import Pose  # noqa: E402
 
 GOLDEN = ROOT / "fixtures" / "landmarks_golden.npz"
 SCENE = ROOT / "model" / "scene.xml"

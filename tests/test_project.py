@@ -11,9 +11,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.kinematics import forward_kinematics, in_limits
-from mirror.kinematics.limits import JOINTS, LIMITS_DEG
-from mirror.project import (
+from robo_mimic.kinematics import forward_kinematics, in_limits
+from robo_mimic.kinematics.limits import JOINTS, LIMITS_DEG
+from robo_mimic.project import (
     MAX_PITCH_SHIFT_DEG,
     Projection,
     pan_candidates,
@@ -23,7 +23,7 @@ from mirror.project import (
     project_wrist_axis,
     wrist_axis,
 )
-from mirror.types import Pose
+from robo_mimic.types import Pose
 
 from .conftest_hands import rodrigues
 
@@ -52,7 +52,7 @@ def residual_axis(rotation: np.ndarray) -> np.ndarray | None:
 # --- the geometry, pinned to the FK -------------------------------------------
 def test_plane_basis_matches_the_forward_kinematics(rng: np.random.Generator) -> None:
     """`n = (sin pan, cos pan, 0)`. Verified to 1.25e-16 when derived."""
-    from mirror.kinematics.forward import get_g12, get_gw1
+    from robo_mimic.kinematics.forward import get_g12, get_gw1
 
     worst = 0.0
     for _ in range(200):
@@ -80,7 +80,7 @@ def test_the_wrist_axis_always_lies_in_the_arm_plane(rng: np.random.Generator) -
 
 def test_pitch_formula_matches_tool_pitch(rng: np.random.Generator) -> None:
     """`pitch = pi - psi`. Verified to 1.02e-13 deg when derived."""
-    from mirror.kinematics import tool_pitch_of
+    from robo_mimic.kinematics import tool_pitch_of
 
     worst = 0.0
     for _ in range(300):
@@ -304,7 +304,7 @@ def test_project_never_fails(
 def test_a_target_on_the_pan_axis_is_unreachable_not_a_crash() -> None:
     """The one place the arm genuinely cannot point: inside the tool's own
     0.178 mm lateral offset of its rotation axis."""
-    from mirror.kinematics.inverse import _D
+    from robo_mimic.kinematics.inverse import _D
 
     result = project(Pose(position=np.asarray(_D, float), rotation=np.eye(3)))
     assert result.status == "unreachable"
@@ -320,7 +320,7 @@ def test_a_far_away_target_is_unreachable_not_a_crash() -> None:
 
 
 def test_pan_candidates_are_empty_only_on_the_axis() -> None:
-    from mirror.kinematics.inverse import _D, _LAT
+    from robo_mimic.kinematics.inverse import _D, _LAT
 
     assert pan_candidates(np.asarray(_D, float)) == []
     just_outside = np.asarray(_D, float) + np.array([2 * abs(_LAT), 0.0, 0.0])

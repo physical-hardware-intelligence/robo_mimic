@@ -12,7 +12,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.landmarks import (
+from robo_mimic.landmarks import (
     INDEX_MCP,
     INDEX_TIP,
     LANDMARK_NAMES,

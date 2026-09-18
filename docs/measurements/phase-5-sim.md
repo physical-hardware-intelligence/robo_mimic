@@ -1,6 +1,6 @@
 # Phase 5 — sim in the loop, measured
 
-**Date**: 2026-09-17 · `src/mirror/sim.py`, `scripts/run_sim.py` · 11 sim tests
+**Date**: 2026-09-17 · `src/robo_mimic/sim.py`, `scripts/run_sim.py` · 11 sim tests
 
 The first phase where the whole pipeline runs end to end and an arm moves.
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mirror.kinematics.inverse import _D, _LAT, inverse_kinematics, pick
-from mirror.kinematics.limits import JOINTS
+from robo_mimic.kinematics.inverse import _D, _LAT, inverse_kinematics, pick
+from robo_mimic.kinematics.limits import JOINTS
 
 #: How close to the pan axis a target may be before the arm cannot reach it.
 #: The tool sits 0.1778 mm off the arm plane, so a target inside that radius of
@@ -79,8 +79,8 @@ def test_pick_without_a_current_pose_takes_the_first_legal_branch() -> None:
     startup there is nothing to minimise against, so any in-limits branch will
     do and the caller must not assume a particular one.
     """
-    from mirror.kinematics.forward import get_forward_kinematics
-    from mirror.kinematics.inverse import tool_pitch, within_limits
+    from robo_mimic.kinematics.forward import get_forward_kinematics
+    from robo_mimic.kinematics.inverse import tool_pitch, within_limits
 
     q = {
         "shoulder_pan": 10.0,

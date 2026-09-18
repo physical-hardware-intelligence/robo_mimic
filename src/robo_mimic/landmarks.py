@@ -190,7 +190,7 @@ class HandTracker:
     """Wraps MediaPipe's HandLandmarker. The only impure thing in the pipeline.
 
     mediapipe is imported INSIDE `__init__`, not at module scope, so that
-    `import mirror.landmarks` works without it. That keeps the pure-math suite
+    `import robo_mimic.landmarks` works without it. That keeps the pure-math suite
     -- the one that runs in CI -- free of a 60 MB native dependency.
 
     Running modes:

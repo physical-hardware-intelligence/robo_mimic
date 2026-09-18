@@ -1,6 +1,6 @@
 # Phase 6 — live sim, measured
 
-**2026-09-17** · `scripts/teleop.py`, `src/mirror/timing.py`
+**2026-09-17** · `scripts/teleop.py`, `src/robo_mimic/timing.py`
 
 One command, three frame sources. `synthetic` skips capture and MediaPipe, so
 the loop can be benchmarked with no camera permission.

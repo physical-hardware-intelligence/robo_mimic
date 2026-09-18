@@ -1,4 +1,4 @@
-"""mirror -- webcam hand-pose teleoperation for the SO-101.
+"""robo_mimic -- webcam hand-pose teleoperation for the SO-101.
 
 Pipeline, left to right. Everything between the two ends is a pure function,
 which is the whole reason the suite can run in CI with no camera and no arm:

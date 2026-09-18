@@ -1,5 +1,5 @@
 [project]
-name = "mirror"
+name = "robo_mimic"
 version = "0.0.1"
 description = "Webcam hand-pose teleoperation for the SO-101: your hand moves, the arm mirrors it."
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = [
 # macOS arm64 inside its own graph -- TensorsToDetectionsCalculator (the palm
 # detector) initialises DrishtiMetalHelper unconditionally and the Metal service
 # is not registered, so it aborts. `delegate=CPU` does not avoid it. 0.10.35 runs
-# clean and is bit-for-bit deterministic. See src/mirror/landmarks.py.
+# clean and is bit-for-bit deterministic. See src/robo_mimic/landmarks.py.
 perception = ["mediapipe==0.10.35", "opencv-contrib-python>=4.10"]
 # Simulation sink, and the Phase 5 validation harness.
 sim = ["mujoco>=3.12"]
@@ -34,7 +34,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mirror"]
+packages = ["src/robo_mimic"]
 
 [tool.ruff]
 line-length = 100
@@ -46,8 +46,8 @@ target-version = "py312"
 extend-exclude = [
     "._*",
     "**/._*",
-    "src/mirror/kinematics/forward.py",
-    "src/mirror/kinematics/inverse.py",
+    "src/robo_mimic/kinematics/forward.py",
+    "src/robo_mimic/kinematics/inverse.py",
 ]
 
 [tool.ruff.lint]
@@ -64,10 +64,10 @@ python_version = "3.12"
 ignore_missing_imports = true
 strict = true
 # Same reason as the ruff exclusion above.
-exclude = ['(^|/)\._', 'src/mirror/kinematics/(forward|inverse)\.py']
+exclude = ['(^|/)\._', 'src/robo_mimic/kinematics/(forward|inverse)\.py']
 
 [[tool.mypy.overrides]]
-module = ["mirror.kinematics.forward", "mirror.kinematics.inverse"]
+module = ["robo_mimic.kinematics.forward", "robo_mimic.kinematics.inverse"]
 ignore_errors = true
 
 [tool.pytest.ini_options]

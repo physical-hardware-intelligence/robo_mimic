@@ -1,4 +1,4 @@
-# mirror -- one command per thing. `make help` lists them.
+# robo_mimic -- one command per thing. `make help` lists them.
 .PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean
 
 help:  ## Show this help
@@ -8,7 +8,7 @@ help:  ## Show this help
 # macOS writes ._* inside the extracted wheel and uv's RECORD check rejects it
 # ("could not find entry for: ruff-x.y.z.data/scripts/._ruff"). Same convention
 # as phi's ~/venvs/so101-sim.
-VENV ?= $(HOME)/venvs/mirror
+VENV ?= $(HOME)/venvs/robo_mimic
 PY   := $(VENV)/bin/python
 
 setup:  ## Create the venv (off exFAT) and install everything
@@ -30,7 +30,7 @@ test-all:  ## everything installable locally (still never hardware)
 	$(PY) -m pytest -m "not hardware"
 
 cov:  ## coverage for the pure-math suite
-	$(PY) -m pytest -m "not perception and not sim and not hardware" --cov=mirror --cov-report=term-missing
+	$(PY) -m pytest -m "not perception and not sim and not hardware" --cov=robo_mimic --cov-report=term-missing
 
 MP_MODEL := https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 MP_IMAGE := https://storage.googleapis.com/mediapipe-tasks/hand_landmarker/woman_hands.jpg

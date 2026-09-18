@@ -11,7 +11,7 @@ import re
 
 import pytest
 
-from mirror.kinematics import limits as L
+from robo_mimic.kinematics import limits as L
 
 from .conftest import PHI_MODEL
 

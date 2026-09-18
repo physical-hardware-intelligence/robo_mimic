@@ -11,9 +11,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.kinematics import GRIPPER_RAD, gripper_openness, gripper_rad
-from mirror.retarget import Clutch, RetargetConfig, Retargeter
-from mirror.types import Pose
+from robo_mimic.kinematics import GRIPPER_RAD, gripper_openness, gripper_rad
+from robo_mimic.retarget import Clutch, RetargetConfig, Retargeter
+from robo_mimic.types import Pose
 
 from .conftest_hands import make_hand, rodrigues
 

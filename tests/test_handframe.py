@@ -7,13 +7,13 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mirror.handframe import (
+from robo_mimic.handframe import (
     DegenerateHandError,
     hand_pose,
     image_position,
     image_span,
 )
-from mirror.landmarks import (
+from robo_mimic.landmarks import (
     INDEX_MCP,
     MIDDLE_MCP,
     PALM,
@@ -138,7 +138,7 @@ def test_without_the_sign_correction_the_frames_would_be_mirrored(
     golden_hands: list[HandLandmarks],
 ) -> None:
     """The bug this guards against, stated as an executable fact."""
-    from mirror.handframe import _PALM_NORMAL_SIGN, _orthonormal
+    from robo_mimic.handframe import _PALM_NORMAL_SIGN, _orthonormal
 
     assert _PALM_NORMAL_SIGN["Left"] == -_PALM_NORMAL_SIGN["Right"]
     hand = golden_hands[0]
