@@ -8,8 +8,8 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 5 complete.** The whole pipeline runs and an arm moves.
-> `make check` = **195 tests, no camera required**; +11 sim tests with `make model`.
+> **Status: Phase 6 complete.** Live: your hand on the left, the simulated arm
+> on the right. `make check` = **208 tests, no camera required**; +11 sim tests.
 > See [Phases](#phases).
 
 ---
@@ -125,12 +125,23 @@ make replay CLIP=fixtures/clips/wave-<stamp>.mp4    # same pipeline, no camera
 `make replay` re-runs a recorded clip through the identical code path, so a
 result you saw live is reproducible without you in front of the lens.
 
-## See it move
+## Drive it yourself
 
 ```bash
 make model     # fetch the SO-101 model, hash-pinned (16.4 MB of meshes)
-make sim       # drive it from a synthetic hand and print the tracking table
-make sim ARGS="--video outputs/sim.mp4"    # and render a clip
+make teleop    # LIVE: your hand on the left, the simulated arm on the right
+```
+
+**`SPACE` is the clutch — the arm only moves while it is ON.** Then move your
+hand to move the tool, **pinch to close the jaw, spread to open it**. `R`
+resets, `Q` quits. The overlay shows the live per-stage latency budget.
+
+No camera, or want the numbers only:
+
+```bash
+make bench     # per-stage latency budget, no camera and no window
+make sim       # tracking-error table against a known trajectory
+make sim ARGS="--video outputs/sim.mp4"    # render a clip
 ```
 
 The synthetic hand uses the committed fixture's **real** MediaPipe landmarks
@@ -140,7 +151,7 @@ which a recorded clip cannot give you.
 ## Verify
 
 ```bash
-make check     # lint + strict mypy + 195 tests. No camera, no robot, no MuJoCo.
+make check     # lint + strict mypy + 208 tests. No camera, no robot, no MuJoCo.
 make test-all  # adds the 13 perception tests (needs mediapipe + make assets)
 make cov       # coverage
 ```
@@ -157,7 +168,7 @@ Each one exits on a **committed number**, not on "it works."
 | 3 | the 5-DOF projection | residual proven to be a pure yaw rotation, 10k poses |
 | **4** ◐ | safety layer | **30 000 adversarial frames, 0 escapes**; velocity at the cap never over; filter beats raw in both regimes. [measurements](docs/measurements/phase-4-safety.md) · *fuzzed envelope done; hardware caps still unverified* |
 | 5 | sim in the loop | tracking-error table + a side-by-side clip |
-| 6 | live sim | per-stage latency budget, sustained FPS |
+| **6** ✅ | live sim | **39.1 fps sustained**, 14.4 ms of a 32.26 ms frame; camera-bound not compute-bound. [measurements](docs/measurements/phase-6-live.md) |
 | 7 | hardware | `Present_Position` read first, return-to-start on exit, e-stop tested before motion |
 
 ## Tested, verified, validated

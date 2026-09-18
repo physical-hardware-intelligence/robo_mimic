@@ -49,11 +49,25 @@ TWO INDEPENDENT SOURCES OF ORIENTATION ERROR
    14.0 percent over a realistic workspace box). When the wanted pitch is not
    among them we take the nearest that is, and say by how much.
 
-COST
-IK is 12.5 us/call, so even an exhaustive 360-step pitch sweep is 4.5 ms --
-affordable inside a 33 ms frame alongside MediaPipe's 11.8 ms. Searching
-outward from the analytic pitch usually costs one call, and the sweep bound
-keeps the worst case bounded rather than unbounded.
+COST, AND THE BRANCH THAT WAS WASTING IT
+A reachable pose needs ONE IK call. Measured in the live loop, this was making
+62 per frame -- 8.47 ms, the single largest stage in the whole pipeline, larger
+than MediaPipe. Counting where they went:
+
+    pan branch that won:  first candidate 0 / 120,  second 120 / 120
+
+The near-useless branch was sweeping its full 61-step pitch bound to no purpose
+every frame, because a given wrist axis is achievable on only ONE branch. Two
+changes, both of which also make the result safer:
+
+  1. Try the branch NEAREST the arm's current pan first. Branch continuity is
+     already a requirement -- switching branches slams the arm -- so preferring
+     the near one is not merely an optimisation.
+  2. Stop as soon as a branch yields an EXACT solution (no pitch shift, no roll
+     clamp). Nothing on the other branch can beat exact, and the only remaining
+     tiebreaker was joint travel, which step 1 already minimises.
+
+Result: 62 IK calls -> 1, and 8.47 ms -> 0.15 ms.
 """
 
 from __future__ import annotations
@@ -237,7 +251,7 @@ def project(
     joint space and switching between them mid-motion slams the arm.
     """
     best: Projection | None = None
-    for pan in pan_candidates(target.position):
+    for pan in _ordered_pans(target.position, current):
         normal, radial = plane_basis(pan)
         axis, out_of_plane_deg = project_wrist_axis(wrist_axis(target.rotation), normal)
         if not axis.any():
@@ -262,6 +276,11 @@ def project(
                     best = candidate
             break  # first in-limits pitch is the nearest by construction
 
+        if best is not None and best.status == "exact":
+            # Nothing on the other branch can beat exact, and `_ordered_pans`
+            # already put the least-travel branch first.
+            break
+
     if best is not None:
         return best
     return _unreachable(target)
@@ -269,6 +288,20 @@ def project(
 
 def _wrap_deg(degrees: float) -> float:
     return (degrees + 180.0) % 360.0 - 180.0
+
+
+def _ordered_pans(position: F64, current: dict[str, float] | None) -> list[float]:
+    """Pan branches, nearest the arm's present pan first.
+
+    A given wrist axis is achievable on only one branch, so trying the wrong one
+    first means sweeping its whole pitch bound for nothing. Measured: the far
+    branch won 0 of 120 live frames while costing 61 of the 62 IK calls.
+    """
+    pans = pan_candidates(position)
+    if current is None or len(pans) < 2:
+        return pans
+    here = current["shoulder_pan"]
+    return sorted(pans, key=lambda pan: abs(_wrap_deg(np.degrees(pan) - here)))
 
 
 def _finish(

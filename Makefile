@@ -1,5 +1,5 @@
 # mirror -- one command per thing. `make help` lists them.
-.PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model sim clean
+.PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n",$$1,$$2}'
@@ -62,6 +62,12 @@ model:  ## Fetch the SO-101 MuJoCo model from upstream (16.4 MB of meshes, hash-
 
 sim: model  ## Drive the sim from a synthetic hand trajectory and report tracking error
 	$(PY) scripts/run_sim.py $(ARGS)
+
+teleop: assets model  ## LIVE: your hand on the left, the simulated arm on the right
+	$(PY) scripts/teleop.py $(ARGS)
+
+bench: model  ## Per-stage latency budget, no camera and no window
+	$(PY) scripts/teleop.py --source synthetic --bench --frames 400 --engage
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache; find . -name __pycache__ -prune -exec rm -rf {} +
