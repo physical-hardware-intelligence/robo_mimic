@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -52,6 +53,17 @@ START = {
     "wrist_roll": 0.0,
 }
 
+
+
+def _fourcc(code: str) -> int:
+    """cv2.VideoWriter_fourcc: present at runtime, absent from the cv2 stubs.
+
+    Imports cv2 itself because these scripts import it lazily inside their
+    functions, so a module-level reference would not resolve.
+    """
+    import cv2
+
+    return int(cv2.VideoWriter_fourcc(*code))  # type: ignore[attr-defined]
 
 def synthetic_hand(
     base: HandLandmarks,
@@ -122,7 +134,8 @@ def run(
     arm = SimArm(SCENE, interpolate=interpolate, start=START)
     dt = 1.0 / PERCEPTION_HZ
 
-    renderer = frames = None
+    renderer = None
+    frames: list[Any] | None = None
     if video is not None:
         renderer = arm.renderer()
         frames = []
@@ -180,9 +193,7 @@ def _write_video(frames: list[np.ndarray], path: Path, fps: float) -> None:
     import cv2
 
     height, width = frames[0].shape[:2]
-    writer = cv2.VideoWriter(
-        str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height)
-    )
+    writer = cv2.VideoWriter(str(path), _fourcc("mp4v"), fps, (width, height))
     for frame in frames:
         writer.write(np.ascontiguousarray(frame[:, :, ::-1]))
     writer.release()

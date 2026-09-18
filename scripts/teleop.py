@@ -307,10 +307,15 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         detector = HandTracker(MODEL, num_hands=1, mode="video")
 
     aspect = source.height / source.width
-    retargeter = Retargeter(RetargetConfig(
-        aspect=aspect,
-        lateral_sign=+1.0 if args.mirror else RetargetConfig.lateral_sign,
-    ))
+    # Override ONLY when mirroring. Reading the default off the class does not
+    # work -- RetargetConfig is `slots=True`, so `RetargetConfig.lateral_sign`
+    # is the slot descriptor, not -1.0, and it sailed into the axis matrix as
+    # `member_descriptor * float`. Naming the default here instead would just
+    # duplicate it somewhere it can rot.
+    overrides: dict[str, float] = {"aspect": aspect}
+    if args.mirror:
+        overrides["lateral_sign"] = +1.0
+    retargeter = Retargeter(RetargetConfig(**overrides))  # type: ignore[arg-type]
     limiter = SafetyLimiter(SafetyConfig())
     smoother = TargetSmoother()
     was_engaged = False
@@ -424,6 +429,8 @@ def main() -> int:  # noqa: PLR0912, PLR0915
 
         import cv2
 
+        if frame is None:          # nothing composited this tick
+            continue
         cv2.imshow("robo_mimic -- hand | sim", frame)
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):

@@ -72,9 +72,12 @@ def main() -> int:
 
     # Transcode once, losslessly, so every later decode agrees.
     if not REFERENCE_PNG.exists():
+        source = cv2.imread(str(SOURCE_JPEG))
+        if source is None:
+            raise SystemExit(f"cannot decode {SOURCE_JPEG}; re-run `make assets`")
         cv2.imwrite(
             str(REFERENCE_PNG),
-            cv2.imread(str(SOURCE_JPEG)),
+            source,
             [cv2.IMWRITE_PNG_COMPRESSION, 9],
         )
         print(f"transcoded {SOURCE_JPEG.name} -> {REFERENCE_PNG.name}")

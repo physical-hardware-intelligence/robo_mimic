@@ -30,8 +30,9 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -73,7 +74,7 @@ def line(ok: bool | None, label: str, detail: str, fix: str = "") -> None:
             print(f"       {DIM}{fix}{OFF}")
 
 
-def open_bus(port: str, calibration_path: Path):
+def open_bus(port: str, calibration_path: Path) -> tuple[Any, dict[str, Any]]:
     """Open the serial port. Does NOT touch torque -- `connect` only pings."""
     from lerobot.motors import Motor, MotorCalibration, MotorNormMode
     from lerobot.motors.feetech import FeetechMotorsBus
@@ -185,7 +186,8 @@ class Arm:
     arm: freeze, walk home, then limp -- in that order, including on exception.
     """
 
-    def __init__(self, bus, rate_hz: float = 50.0, speed_deg_s: float = 15.0) -> None:
+    def __init__(self, bus: Any, rate_hz: float = 50.0,
+                 speed_deg_s: float = 15.0) -> None:
         self.bus = bus
         self.dt = 1.0 / rate_hz
         self.speed = speed_deg_s
@@ -272,7 +274,7 @@ class Arm:
             print("  parked, torque off, goal aligned to where it settled")
 
 
-def align(bus) -> float:
+def align(bus: Any) -> float:
     """Goal_Position := Present_Position. Torque untouched, nothing moves.
 
     The cure for a stale goal left behind by any other process -- a lerobot
@@ -282,12 +284,12 @@ def align(bus) -> float:
     """
     present = bus.sync_read("Present_Position", normalize=False)
     goal = bus.sync_read("Goal_Position", normalize=False)
-    before = stale_goal_deg(present, goal, RESOLUTION)
+    before = float(stale_goal_deg(present, goal, RESOLUTION))
     bus.sync_write("Goal_Position", present, normalize=False)
     return before
 
 
-def _keys():
+def _keys() -> Iterator[str]:
     """Non-blocking single keypresses, restoring the terminal on the way out."""
     import select
     import termios
@@ -449,8 +451,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
                               present[GRIPPER] / 100.0)
 
                 age_ms = (tick - last_seen) * 1000.0
-                live = target is not None and age_ms <= STALE_MS and target.engaged
-                if not live:
+                # Bind the narrowed value rather than re-deriving `live` from a
+                # nullable: the old form was correct at runtime but mypy could
+                # not see it, which is how a scripts/-only type error hid.
+                fresh = target if (target is not None and age_ms <= STALE_MS) else None
+                live = fresh is not None and fresh.engaged
+                if fresh is None or not live:
                     if not holding:
                         arm.freeze()
                         holding = True
@@ -462,11 +468,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
                     holding = False
                     goal = {}
                     for name in JOINTS:
-                        delta = target.joints[name] - setpoint[name]
+                        delta = fresh.joints[name] - setpoint[name]
                         capped = max(-step_ceiling, min(step_ceiling, delta))
                         setpoint[name] = clamp_deg(name, setpoint[name] + capped)
                         goal[name] = setpoint[name]
-                    goal[GRIPPER] = min(100.0, max(0.0, target.gripper * 100.0))
+                    goal[GRIPPER] = min(100.0, max(0.0, fresh.gripper * 100.0))
                     arm.bus.sync_write("Goal_Position", goal)
 
                 ticks += 1

@@ -14,7 +14,7 @@ jobs:
       - name: Lint
         run: ruff check src tests scripts
       - name: Types (strict)
-        run: mypy src
+        run: mypy src scripts
       - name: Pure-math suite
         run: pytest -m "not perception and not sim and not hardware" --cov=robo_mimic --cov-report=term-missing
 

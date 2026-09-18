@@ -187,7 +187,7 @@ def main() -> int:
         limiter = SafetyLimiter()
         legal = True
         for bad in (None, dict.fromkeys(("shoulder_pan",), 0.0), {}):
-            legal &= all_in_limits(limiter.step(bad, 0.5, 1 / 31).joints)  # type: ignore[arg-type]
+            legal &= all_in_limits(limiter.step(bad, 0.5, 1 / 31).joints)
         nan_joints = dict.fromkeys(result.joints, float("nan"))
         legal &= all_in_limits(limiter.step(nan_joints, float("nan"), 1 / 31).joints)
         start = dict(limiter.last)

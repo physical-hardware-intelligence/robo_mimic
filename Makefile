@@ -36,8 +36,13 @@ check: lint types test  ## THE GATE. Everything that must be green before a comm
 lint:  ## ruff
 	$(PY) -m ruff check src tests scripts
 
-types:  ## mypy (strict)
-	$(PY) -m mypy src
+# `src` ONLY for two months, and scripts/ is where the operator-facing code
+# lives. A --mirror flag read `RetargetConfig.lateral_sign` off a slots=True
+# dataclass, got the slot DESCRIPTOR instead of -1.0, and crashed teleop on
+# the first frame. mypy catches `member_descriptor * float` instantly; it was
+# simply never pointed at the file.
+types:  ## mypy (strict), src AND scripts
+	$(PY) -m mypy src scripts
 
 test:  ## the pure-math suite -- no camera, no arm, no mujoco
 	$(PY) -m pytest -m "not perception and not sim and not hardware"

@@ -38,6 +38,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -68,7 +69,21 @@ BLUE = (240, 160, 60)
 AMBER = (0, 190, 255)
 
 
-def draw(canvas, hand, pose, command, config, stats):  # type: ignore[no-untyped-def]
+def _fourcc(code: str) -> int:
+    """cv2.VideoWriter_fourcc: present at runtime, absent from the cv2 stubs.
+
+    Imports cv2 itself because these scripts import it lazily inside their
+    functions, so a module-level reference would not resolve.
+    """
+    import cv2
+
+    return int(cv2.VideoWriter_fourcc(*code))  # type: ignore[attr-defined]
+
+
+def draw(
+    canvas: Any, hand: Any, pose: Any, command: Any,
+    config: Any, stats: dict[str, Any],
+) -> Any:
     import cv2
 
     height, width = canvas.shape[:2]
@@ -93,13 +108,14 @@ def draw(canvas, hand, pose, command, config, stats):  # type: ignore[no-untyped
     panel = canvas[0:156, 0:430]
     canvas[0:156, 0:430] = (panel * 0.35).astype(np.uint8)
 
-    def text(row, label, value, colour=WHITE):  # type: ignore[no-untyped-def]
+    def text(row: int, label: str, value: str,
+             colour: tuple[int, int, int] = WHITE) -> None:
         cv2.putText(canvas, label, (12, row), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1,
                     cv2.LINE_AA)
         cv2.putText(canvas, value, (118, row), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1,
                     cv2.LINE_AA)
 
-    def bar(row, value, colour):  # type: ignore[no-untyped-def]
+    def bar(row: int, value: float, colour: tuple[int, int, int]) -> int:
         x0, width_px = 118, 180
         cv2.rectangle(canvas, (x0, row - 12), (x0 + width_px, row), (60, 60, 60), -1)
         filled = int(np.clip(value, 0, 1) * width_px)
@@ -277,7 +293,7 @@ def main() -> int:
                     stamp = time.strftime("%Y%m%d-%H%M%S")
                     path = CLIPS / f"{args.name}-{stamp}.mp4"
                     writer = cv2.VideoWriter(
-                        str(path), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (width, height)
+                        str(path), _fourcc("mp4v"), 30.0, (width, height)
                     )
                     print(f"recording -> {path.name}")
                 else:
@@ -311,8 +327,8 @@ def save(
     seen = np.zeros(count, dtype=bool)
     for index, row in enumerate(captured):
         if row["image"] is not None:
-            image[index] = row["image"]
-            world[index] = row["world"]
+            image[index] = np.asarray(row["image"])
+            world[index] = np.asarray(row["world"])
             seen[index] = True
     stamp = time.strftime("%Y%m%d-%H%M%S")
     path = CLIPS / f"{name}-{stamp}.npz"
