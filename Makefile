@@ -1,5 +1,5 @@
 # robo_mimic -- one command per thing. `make help` lists them.
-.PHONY: help setup check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean
+.PHONY: help setup lock check lint types test test-all cov assets fixtures doctor view record replay model sim teleop bench clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n",$$1,$$2}'
@@ -7,7 +7,8 @@ help:  ## Show this help
 # The venv lives OFF the exFAT drive on purpose. Installing onto exFAT fails:
 # macOS writes ._* inside the extracted wheel and uv's RECORD check rejects it
 # ("could not find entry for: ruff-x.y.z.data/scripts/._ruff"). Same convention
-# as phi's ~/venvs/so101-sim.
+# as phi's ~/venvs/so101-sim. uv's default is a project-local .venv, which is
+# exactly the broken case, so `setup` overrides it with UV_PROJECT_ENVIRONMENT.
 VENV ?= $(HOME)/venvs/robo_mimic
 # Use the venv when it exists, otherwise whatever `python` is on PATH. CI
 # installs into the runner's system Python and has no venv at this path, so a
@@ -15,9 +16,14 @@ VENV ?= $(HOME)/venvs/robo_mimic
 # which is exactly how the first public CI run broke.
 PY   := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python)
 
-setup:  ## Create the venv (off exFAT) and install everything
-	uv venv --python 3.12 $(VENV)
-	uv pip install --python $(PY) -e ".[perception,sim,dev]"
+setup:  ## Create the venv (off exFAT) and install the EXACT locked versions
+	UV_PROJECT_ENVIRONMENT=$(VENV) uv sync --locked --all-extras
+
+# `--locked` fails loudly if pyproject and uv.lock disagree instead of silently
+# installing something stale. CI deliberately does NOT use the lock: floating
+# there is the canary that catches an upstream release breaking us.
+lock:  ## Re-resolve uv.lock. Run this after editing dependencies in pyproject.
+	uv lock
 
 check: lint types test  ## THE GATE. Everything that must be green before a commit.
 
