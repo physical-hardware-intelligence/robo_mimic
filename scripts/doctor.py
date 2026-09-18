@@ -112,34 +112,51 @@ def main() -> int:
         import numpy as np
 
         from mirror.handframe import hand_pose
-        from mirror.landmarks import HandLandmarks
+        from mirror.kinematics import gripper_rad
+        from mirror.landmarks import INDEX_TIP, THUMB_TIP, HandLandmarks
         from mirror.retarget import Clutch, Retargeter
         from mirror.types import Pose
 
         data = np.load(golden)
-        hand = HandLandmarks(
-            image=data["image"][0],
-            world=data["world"][0],
-            handedness=str(data["handedness"][0]),
-            score=float(data["score"][0]),
-            timestamp_ms=0,
-        )
-        rotation = hand_pose(hand).rotation
+
+        def hand_with(pinch_world: np.ndarray) -> HandLandmarks:
+            world = data["world"][0].copy()
+            world[THUMB_TIP] = world[INDEX_TIP] + pinch_world
+            return HandLandmarks(
+                image=data["image"][0],
+                world=world,
+                handedness=str(data["handedness"][0]),
+                score=float(data["score"][0]),
+                timestamp_ms=0,
+            )
+
+        open_hand = hand_with(np.array([0.12, 0.0, 0.0]))
+        shut_hand = hand_with(np.zeros(3))
+        rotation = hand_pose(open_hand).rotation
         orthonormal = bool(np.abs(rotation.T @ rotation - np.eye(3)).max() < 1e-9)
+        check("hand frame", orthonormal, "orthonormal to 1e-9")
+
+        home = Pose(position=np.array([0.2, 0.0, 0.15]), rotation=np.eye(3))
+        idle = Retargeter().step(open_hand, home, 0, engage=False)
+        gated = idle.target is None and idle.gripper is None
+        check("clutch gates motion", gated, "key up -> no pose, no jaw")
 
         retargeter = Retargeter()
-        home = Pose(position=np.array([0.2, 0.0, 0.15]), rotation=np.eye(3))
-        squeezed = HandLandmarks(
-            image=hand.image,
-            world=hand.world.copy(),
-            handedness=hand.handedness,
-            score=hand.score,
-            timestamp_ms=0,
-        )
-        squeezed.world[4] = squeezed.world[8]  # thumb tip onto index tip -> pinch = 0
-        engaged = retargeter.step(squeezed, home, 0).clutch is Clutch.ENGAGED
-        check("pipeline (fixture -> command)", orthonormal and engaged,
-              "frame orthonormal, clutch engages")
+        wide = retargeter.step(open_hand, home, 0, engage=True)
+        tight = retargeter.step(shut_hand, home, 33, engage=True)
+        moving = wide.clutch is Clutch.ENGAGED and wide.target is not None
+        check("clutch engages", moving, "key down -> commands a pose")
+
+        if wide.gripper is not None and tight.gripper is not None:
+            check(
+                "gripper follows the pinch",
+                tight.gripper < wide.gripper,
+                f"open {wide.gripper:.2f} -> shut {tight.gripper:.2f}"
+                f"  ({np.degrees(gripper_rad(wide.gripper)):.0f} deg ->"
+                f" {np.degrees(gripper_rad(tight.gripper)):.0f} deg)",
+            )
+        else:
+            check("gripper follows the pinch", False, "no jaw command while engaged")
     except Exception as error:  # noqa: BLE001
         check("pipeline (fixture -> command)", False, f"{type(error).__name__}: {error}",
               "make check")

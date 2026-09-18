@@ -125,3 +125,63 @@ unusable; never disengaging is unsafe.
 | orthonormality under fuzz | ✅ 400 poses × both hands, `< 1e-12` |
 | clutch state machine table-covered | ✅ all 10 transitions |
 | suite still needs no camera | ✅ **120 passed**, 13 deselected |
+
+---
+
+# Addendum (2026-09-17) — the numbers behind ADR-003
+
+## Depth is 7–25× noisier than lateral
+
+`image_position = (cx/s, cy·a/s, 1/s)`. Differentiate:
+
+```
+lateral   d(cx/s) = dcx / s        ← s to the FIRST power
+depth     d(1/s)  = ds  / s²       ← s SQUARED
+```
+
+With `s ≈ 0.155`, dividing by `s²` costs an extra factor of `1/s ≈ 6.5`.
+
+| camera noise σ | lateral | depth | ratio |
+|---|---|---|---|
+| 0.5 levels | 0.142 mm | 1.041 mm | 7.3× |
+| 1.0 levels | 0.226 mm | **2.331 mm** | **10.3×** |
+| 2.0 levels | 0.432 mm | **10.822 mm** | **25.0×** |
+
+⇒ `depth_scale_m_per_span = 0.035` against `scale_m_per_span = 0.10`.
+
+## The IK amplifies tool error into joint error, ≈ 0.6°/mm
+
+| tool jitter | worst joint jitter | median |
+|---|---|---|
+| 0.23 mm (lateral) | 0.462° | 0.135° |
+| 2.33 mm (depth) | **4.426°** | 1.466° |
+| 10 mm | **19.631°** | 5.954° |
+
+Combined with **ζ = 0.250** and a **17.9 Hz** resonance, unfiltered jitter does
+not merely look shaky — it excites the mode.
+
+## Only 7–37% of pitches are reachable
+
+| position | reachable pitches |
+|---|---|
+| (0.219, −0.275, 0.294) | 15.5% |
+| (0.208, −0.296, 0.359) | 8.0% |
+| (0.058, 0.237, 0.375) | 37.0% |
+| (0.282, −0.240, 0.368) | 7.0% |
+
+⇒ `follow_orientation = False` by default.
+
+> ⚠️ **A correction.** A first pass at this reported 0.8%, then 0.0%. Both were
+> my test, not the arm: `tool_pitch` is **unwrapped** and ranges **−447° … +99°**,
+> so a ±90° sweep missed nearly all of it. Sweeping the true range gives the
+> numbers above.
+
+## The gripper is exactly decoupled
+
+```
+jaw 0 → 1.5 rad moves the tool frame by  0.000e+00 m
+jaw ctrlrange  −10° … +100°
+```
+
+No gripper command can perturb the arm, the IK, or the jitter above. That is
+why wiring it was the lowest-risk change available.

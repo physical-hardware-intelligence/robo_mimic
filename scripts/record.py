@@ -5,16 +5,27 @@
     make record               look, and press SPACE to capture a clip
 
 KEYS
-    SPACE   start / stop recording
-    R       reset the clutch
+    SPACE   clutch on / off        <- the arm only moves while this is ON
+    C       start / stop capturing a clip
+    R       reset the clutch and the anchor
     Q/ESC   quit
 
 WHAT YOU SHOULD SEE
     green skeleton          21 landmarks
     red/green/blue axes     the palm frame: x, y (fingers), z (out of palm)
-    PINCH bar               thumb-to-index over palm span, with both thresholds
-    CLUTCH                  grey when open, green when pinched
+    CLUTCH                  grey = off (nothing moves), green = on
+    JAW bar                 gripper opening. Pinch to close, spread to open
+    PINCH                   the raw thumb-index ratio behind the jaw
     TOOL                    where the arm would be commanded, in metres
+
+DEADMAN CAVEAT
+SPACE here is a TOGGLE, not a held key. OpenCV cannot detect key-hold: macOS
+sends one keydown, then nothing for ~500 ms, then repeats. A "held" heuristic
+would drop out during that gap, which is worse than a toggle.
+
+`Retargeter.step` takes `engage` as a plain boolean precisely so the source can
+change without touching the logic. Phase 7 on real hardware needs a genuine
+momentary switch -- a footswitch or gamepad trigger -- not this toggle.
 
 The preview is mirrored so it behaves like a mirror. MediaPipe assumes an
 unmirrored image, so it labels your right hand "Left". That is expected and
@@ -79,47 +90,61 @@ def draw(canvas, hand, pose, command, config, stats):  # type: ignore[no-untyped
                 tip = origin + (axis[:2] * [1, 1] * length).astype(int)
                 cv2.arrowedLine(canvas, tuple(origin), tuple(tip), colour, 3, tipLength=0.25)
 
-    panel = canvas[0:132, 0:430]
-    canvas[0:132, 0:430] = (panel * 0.35).astype(np.uint8)
+    panel = canvas[0:156, 0:430]
+    canvas[0:156, 0:430] = (panel * 0.35).astype(np.uint8)
 
     def text(row, label, value, colour=WHITE):  # type: ignore[no-untyped-def]
-        cv2.putText(canvas, label, (12, row), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1, cv2.LINE_AA)
+        cv2.putText(canvas, label, (12, row), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1,
+                    cv2.LINE_AA)
         cv2.putText(canvas, value, (118, row), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1,
                     cv2.LINE_AA)
 
+    def bar(row, value, colour):  # type: ignore[no-untyped-def]
+        x0, width_px = 118, 180
+        cv2.rectangle(canvas, (x0, row - 12), (x0 + width_px, row), (60, 60, 60), -1)
+        filled = int(np.clip(value, 0, 1) * width_px)
+        cv2.rectangle(canvas, (x0, row - 12), (x0 + filled, row), colour, -1)
+        return x0 + width_px + 8
+
     text(24, "fps / mp", f"{stats['fps']:5.1f}  {stats['latency']:5.1f} ms")
+
+    engaged = command.clutch is Clutch.ENGAGED
+    text(48, "clutch", f"{'ON' if engaged else 'off'}  ({command.reason})",
+         GREEN if engaged else GREY)
+
+    if command.gripper is None:
+        text(72, "jaw", "-- gated by the clutch --", GREY)
+    else:
+        end = bar(72, command.gripper, GREEN)
+        cv2.putText(canvas, f"{command.gripper:.2f}", (end, 72),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, WHITE, 1, cv2.LINE_AA)
+        cv2.putText(canvas, "jaw", (12, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1,
+                    cv2.LINE_AA)
 
     ratio = command.pinch_ratio
     if ratio is None:
-        text(46, "pinch", "--", GREY)
+        text(96, "pinch", "--", GREY)
     else:
-        bar_x, bar_w = 118, 180
-        cv2.rectangle(canvas, (bar_x, 38), (bar_x + bar_w, 50), (60, 60, 60), -1)
-        filled = int(np.clip(ratio / 1.2, 0, 1) * bar_w)
-        engaged = command.clutch is Clutch.ENGAGED
-        cv2.rectangle(canvas, (bar_x, 38), (bar_x + filled, 50), GREEN if engaged else AMBER, -1)
-        for threshold in (config.pinch_on, config.pinch_off):
-            tick = bar_x + int(np.clip(threshold / 1.2, 0, 1) * bar_w)
-            cv2.line(canvas, (tick, 34), (tick, 54), WHITE, 1)
-        cv2.putText(canvas, f"{ratio:.2f}", (bar_x + bar_w + 8, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, WHITE, 1, cv2.LINE_AA)
-        cv2.putText(canvas, "pinch", (12, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1, cv2.LINE_AA)
-
-    engaged = command.clutch is Clutch.ENGAGED
-    text(74, "clutch", f"{command.clutch.value.upper()}  ({command.reason})",
-         GREEN if engaged else GREY)
+        end = bar(96, ratio / 1.2, AMBER)
+        for threshold in (config.pinch_closed, config.pinch_open):
+            tick = 118 + int(np.clip(threshold / 1.2, 0, 1) * 180)
+            cv2.line(canvas, (tick, 80), (tick, 98), WHITE, 1)
+        cv2.putText(canvas, f"{ratio:.2f}", (end, 96), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                    WHITE, 1, cv2.LINE_AA)
+        cv2.putText(canvas, "pinch", (12, 96), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1,
+                    cv2.LINE_AA)
 
     if command.target is not None:
         p = command.target.position * 100
-        text(98, "tool cm", f"x {p[0]:+6.1f}  y {p[1]:+6.1f}  z {p[2]:+6.1f}", GREEN)
+        text(122, "tool cm", f"x {p[0]:+6.1f}  y {p[1]:+6.1f}  z {p[2]:+6.1f}", GREEN)
     else:
-        text(98, "tool cm", "holding", GREY)
+        text(122, "tool cm", "holding", GREY)
 
     if stats["recording"]:
         cv2.circle(canvas, (width - 28, 28), 10, RED, -1)
         cv2.putText(canvas, f"REC {stats['frames']}", (width - 140, 34),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, RED, 2, cv2.LINE_AA)
-    cv2.putText(canvas, "SPACE record   R reset   Q quit", (12, height - 14),
+    cv2.putText(canvas, "SPACE clutch   C capture   R reset   Q quit", (12, height - 14),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1, cv2.LINE_AA)
     return canvas
 
@@ -176,6 +201,7 @@ def main() -> int:
     retargeter = Retargeter(config)
     tool_home = Pose(position=np.array([0.20, 0.0, 0.15]), rotation=np.eye(3))
 
+    engaged = False
     recording = False
     writer = None
     captured: list[dict[str, object]] = []
@@ -203,7 +229,7 @@ def main() -> int:
                     pose = hand_pose(hand)
                 except DegenerateHandError:
                     pose = None
-            command = retargeter.step(hand, tool_home, timestamp_ms)
+            command = retargeter.step(hand, tool_home, timestamp_ms, engage=engaged)
 
             now = time.perf_counter()
             instant = 1.0 / max(now - previous, 1e-6)
@@ -241,7 +267,10 @@ def main() -> int:
                 break
             if key == ord("r"):
                 retargeter.reset()
+                engaged = False
             if key == ord(" "):
+                engaged = not engaged
+            if key == ord("c"):
                 recording = not recording
                 if recording:
                     captured = []

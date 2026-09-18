@@ -8,8 +8,8 @@ One RGB camera, no depth sensor, no gloves, no markers.
 Built by [Φ — Physical Hardware Intelligence](https://github.com/physical-hardware-intelligence/phi),
 a student robotics SIG at Northeastern University's Silicon Valley campus.
 
-> **Status: Phase 2 complete.** Hand frame and clutch are in.
-> `make check` = **120 tests, no camera required**. See [Phases](#phases).
+> **Status: Phase 2 complete**, plus the gripper.
+> `make check` = **138 tests, no camera required**. See [Phases](#phases).
 
 ---
 
@@ -71,16 +71,35 @@ make doctor    # deps, model, camera permission, pipeline -- one line each
 make view      # live hand tracking from the built-in camera
 ```
 
-**Pinch thumb to index to engage.** Move your hand, the tool target follows.
-Release to freeze. `SPACE` records a clip, `R` resets the clutch, `Q` quits.
+**`SPACE` is the clutch.** Nothing moves until it is ON. With it on: move your
+hand to move the tool, **pinch to close the jaw, spread to open it**.
+`C` captures a clip, `R` resets, `Q` quits.
 
 | on screen | what it is |
 |---|---|
 | green skeleton | the 21 landmarks |
 | red / green / blue arrows | palm frame: x, y (fingers), z (out of palm) |
-| PINCH bar | thumb-index over palm span; white ticks are the two thresholds |
-| CLUTCH | grey when open, green when engaged |
+| CLUTCH | grey = off (nothing moves), green = on |
+| JAW bar | gripper opening, 0 → 1 |
+| PINCH bar | the raw ratio behind the jaw; ticks are closed/open |
 | TOOL cm | where the arm would be commanded |
+
+### What drives what ([ADR-003](docs/adr/003-clutch-on-a-key-gripper-on-the-pinch.md))
+
+| signal | drives | why |
+|---|---|---|
+| held key | the clutch | a key cannot false-trigger; a gesture threshold can. **Deadman, not UX.** |
+| hand position | tool position | incremental from wherever you engaged |
+| thumb-index gap | **jaw opening**, continuous | the natural grasp gesture, and the jaw is measured to be **exactly decoupled** from the arm (0.000e+00 m) |
+| hand rotation | tool rotation — **off** | only 7–37% of pitches are reachable on a 5-DOF arm |
+
+**The jaw is gated by the clutch too.** A deadman that still lets the gripper
+crush is not a deadman.
+
+⚠️ `SPACE` is a **toggle**, not a held key: OpenCV cannot detect key-hold
+(macOS sends one keydown, ~500 ms of silence, then repeats). The API takes
+`engage` as a boolean so the source can change. **Hardware needs a real
+momentary switch.**
 
 **Camera permission is per-application.** macOS grants it to whichever app
 launched the process, so run `make view` from the terminal you normally use and
@@ -98,7 +117,7 @@ result you saw live is reproducible without you in front of the lens.
 ## Verify
 
 ```bash
-make check     # lint + strict mypy + 120 tests. No camera, no robot, no MuJoCo.
+make check     # lint + strict mypy + 138 tests. No camera, no robot, no MuJoCo.
 make test-all  # adds the 13 perception tests (needs mediapipe + make assets)
 make cov       # coverage
 ```
@@ -111,7 +130,7 @@ Each one exits on a **committed number**, not on "it works."
 |---|---|---|
 | **0** ✅ | scaffold, kinematics, limits | `make check` green, real tests, ADR-001/002 written |
 | **1** ✅ | perception, offline | bit-identical landmarks, PNG-pinned; p90 **11.76 ms** (85 FPS). [measurements](docs/measurements/phase-1-perception.md) |
-| **2** ✅ | hand frame + retarget | orthonormal to **1e-16**; mirror test exact; all 10 clutch transitions. [measurements](docs/measurements/phase-2-handframe.md) |
+| **2** ✅ | hand frame + retarget + **gripper** | orthonormal to **1e-16**; mirror test exact; all 10 clutch transitions; jaw clamped under fuzz. [measurements](docs/measurements/phase-2-handframe.md) |
 | 3 | the 5-DOF projection | residual proven to be a pure yaw rotation, 10k poses |
 | 4 | safety layer | 10k fuzz cases, zero escapes |
 | 5 | sim in the loop | tracking-error table + a side-by-side clip |

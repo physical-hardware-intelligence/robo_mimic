@@ -14,6 +14,8 @@ from .limits import (
     JOINTS,
     LIMITS_DEG,
     clamp_deg,
+    gripper_openness,
+    gripper_rad,
     span_deg,
     within_limits_deg,
 )
@@ -24,6 +26,8 @@ __all__ = [
     "JOINTS",
     "LIMITS_DEG",
     "clamp_deg",
+    "gripper_openness",
+    "gripper_rad",
     "span_deg",
     "within_limits_deg",
 ]

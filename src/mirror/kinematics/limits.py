@@ -66,3 +66,24 @@ def span_deg(joint: str) -> float:
     """Total travel of one joint, in degrees."""
     lo, hi = LIMITS_DEG[joint]
     return hi - lo
+
+
+def gripper_rad(openness: float) -> float:
+    """Normalized jaw openness [0,1] -> joint angle in radians.
+
+    The boundary between intent and actuator units. `retarget.py` speaks only in
+    openness; this is the single place that knows what the servo wants.
+
+    Measured: driving this joint from 0 to 1.5 rad moves the tool frame by
+    exactly 0.000e+00 m. The jaw is fully decoupled from the arm, so no gripper
+    command can perturb the IK or the arm's motion.
+    """
+    lo, hi = GRIPPER_RAD
+    clamped = 0.0 if openness < 0.0 else 1.0 if openness > 1.0 else openness
+    return lo + clamped * (hi - lo)
+
+
+def gripper_openness(radians: float) -> float:
+    """Inverse of `gripper_rad`, for reading the arm's actual jaw back."""
+    lo, hi = GRIPPER_RAD
+    return (radians - lo) / (hi - lo)

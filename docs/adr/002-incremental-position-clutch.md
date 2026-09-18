@@ -1,7 +1,12 @@
 # ADR-002: Map orientation absolutely, position incrementally through a clutch
 
-**Status**: Accepted
+**Status**: Accepted; the clutch mechanism is superseded by [ADR-003](003-clutch-on-a-key-gripper-on-the-pinch.md)
 **Date**: 2026-09-16
+
+> The core finding here stands: one camera cannot measure absolute distance, so
+> position must be incremental. What changed is what ENGAGES that increment.
+> ADR-003 moves the clutch from a pinch to a held key, freeing the pinch for the
+> gripper, and de-rates the depth axis after measuring it at 7-25x the noise.
 
 ## Context
 
